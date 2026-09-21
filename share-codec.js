@@ -8,7 +8,6 @@
   const SCHEMA = "structure-share/2";
   const LEGACY_SCHEMA = "structure-share/1";
   const WARNING_LENGTH = 8000;
-  const STORAGE_KEY = "researchToolkit.structureShare.viewerBaseUrl.v2";
   const PUBLIC_GITHUB_OWNER = "ysato-mol";
   const PUBLIC_WEB_REPO = "research-toolkit-web";
   const PUBLIC_VIEWER_URL = "https://ysato-mol.github.io/research-toolkit-web/";
@@ -19,6 +18,8 @@
   const OMIT_HYDROGENS = 4;
   const SUPPORTED_OMISSIONS = OMIT_CHARGE | OMIT_MULTIPLICITY | OMIT_HYDROGENS;
   const PROFILE_FIELDS = new Set(["scale", "omissions"]);
+  const PAYLOAD_FIELDS = new Set(["schema", "elements", "coordinates", "charge", "multiplicity", "profile"]);
+  const WIRE_FIELDS = new Set(["s", "e", "a", "c", "q", "m", "z", "o"]);
   const DECIMAL_TOKEN = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[Ee][+-]?\d+)?$/;
   let qrAssetsPromise;
 
@@ -77,8 +78,8 @@
     }
     if (expectedVersion && expectedVersion !== 2) throw new Error(`Unsupported structure share version: ${expectedVersion}.`);
     if (payload?.s === 2) return fromWirePayload(payload);
-    validatePayload(payload);
-    return payload;
+    if (payload?.schema === SCHEMA) throw new Error("Structure share v2 must use the canonical wire payload.");
+    throw new Error("Unsupported structure share payload.");
   }
 
   function parseXyz(xyz) {
@@ -116,6 +117,8 @@
       schema: SCHEMA,
       elements: parsed.elements,
       coordinates: parsed.coordinates,
+      charge: 0,
+      multiplicity: 1,
     };
     if (options?.charge !== undefined && options?.charge !== null && options?.charge !== "") {
       const charge = Number(options.charge);
@@ -149,6 +152,9 @@
 
   function validatePayload(payload) {
     if (!payload || payload.schema !== SCHEMA) throw new Error("Unsupported structure share schema.");
+    if (Object.keys(payload).some((field) => !PAYLOAD_FIELDS.has(field))) {
+      throw new Error("Structure share payload contains unsupported fields.");
+    }
     if (!Array.isArray(payload.elements) || !Array.isArray(payload.coordinates) || !payload.elements.length) {
       throw new Error("The shared structure does not contain atom arrays.");
     }
@@ -162,8 +168,8 @@
         throw new Error(`The shared atom array has invalid coordinates at index ${index}.`);
       }
     });
-    if (Object.hasOwn(payload, "charge") && !Number.isInteger(Number(payload.charge))) throw new Error("Structure charge must be an integer.");
-    if (Object.hasOwn(payload, "multiplicity") && (!Number.isInteger(Number(payload.multiplicity)) || Number(payload.multiplicity) < 1)) {
+    if (Object.hasOwn(payload, "charge") && !Number.isInteger(payload.charge)) throw new Error("Structure charge must be an integer.");
+    if (Object.hasOwn(payload, "multiplicity") && (!Number.isInteger(payload.multiplicity) || payload.multiplicity < 1)) {
       throw new Error("Structure multiplicity must be an integer of at least one.");
     }
     if (payload.profile !== undefined) validateProfile(payload.profile);
@@ -199,6 +205,9 @@
   function fromWirePayload(wire) {
     if (!wire || wire.s !== 2 || !Array.isArray(wire.e) || !Array.isArray(wire.a) || !Array.isArray(wire.c)) {
       throw new Error("Malformed structure share v2 atom arrays.");
+    }
+    if (Object.keys(wire).some((field) => !WIRE_FIELDS.has(field))) {
+      throw new Error("Structure share v2 wire payload contains unsupported fields.");
     }
     if (wire.c.length !== wire.a.length * 3 || !wire.a.length) throw new Error("Malformed structure share v2 atom arrays.");
     const elements = wire.a.map((dictionaryIndex) => {
@@ -273,16 +282,6 @@
   }
 
   function defaultViewerUrl() {
-    try {
-      const saved = root?.localStorage?.getItem(STORAGE_KEY);
-      if (saved) {
-        const url = new URL(saved);
-        const stale = url.protocol !== "https:" || url.hostname.toLowerCase() === "pepeporn.github.io" || ["localhost", "127.0.0.1"].includes(url.hostname.toLowerCase());
-        if (!stale) return url.href.split("#")[0];
-      }
-    } catch (_error) {
-      // Storage is optional.
-    }
     return PUBLIC_VIEWER_URL;
   }
 
