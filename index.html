@@ -3,46 +3,56 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-    <title>Shared Molecular Structure</title>
-    <link rel="stylesheet" href="app.css?v=20260918-1">
+    <title>Research Toolkit Structure Viewer</title>
+    <link rel="stylesheet" href="app.css?v=2484b2b2f43687cd40c4c531586de9c40b45c77b">
   </head>
   <body>
     <main class="viewer-shell">
       <header class="viewer-header">
-        <div class="title-block">
-          <p class="eyebrow">Research Toolkit · Structure Viewer</p>
-          <h1 id="structureTitle">Shared molecular structure</h1>
-        </div>
+        <p class="product-label">Research Toolkit · Structure Viewer</p>
         <span id="structureSummary" class="summary"></span>
       </header>
+
       <section id="viewerStage" class="viewer-stage" aria-label="Molecular structure viewer">
         <div id="viewer" class="viewer"><p>Loading shared structure...</p></div>
-        <div id="selectionOverlay" class="selection-overlay" hidden></div>
+        <output id="measurementOverlay" class="measurement-overlay" aria-live="polite" hidden></output>
+        <output id="statusMessage" class="status-message" aria-live="polite" hidden></output>
         <span class="resize-affordance" aria-hidden="true"></span>
       </section>
-      <nav class="viewer-controls viewer-toolbar" aria-label="Viewer controls">
-        <label class="style-control"><span>Display</span><select id="styleSelect"><option value="ball-stick">Ball &amp; stick</option><option value="stick">Stick</option><option value="spacefill">Spacefill</option></select></label>
-        <div class="control-group" aria-label="Viewer modes">
+
+      <section class="viewer-controls" aria-label="Viewer controls">
+        <div class="control-section display-controls">
+          <span class="control-heading">Display</span>
+          <label class="style-control">
+            <span class="sr-only">Molecule style</span>
+            <select id="styleSelect">
+              <option value="ball-stick">Ball &amp; stick</option>
+              <option value="stick">Stick</option>
+              <option value="spacefill">Spacefill</option>
+            </select>
+          </label>
           <button id="labelsButton" type="button" class="tonal-action" aria-pressed="false">Labels</button>
-          <button id="measureButton" type="button" class="tonal-action" aria-pressed="true">Measure</button>
         </div>
-        <div class="control-group viewer-commands" aria-label="Viewer actions">
-          <button id="clearButton" type="button" class="outlined-action">Clear</button>
+        <div class="control-section action-controls">
+          <span class="control-heading">Actions</span>
+          <button id="clearButton" type="button" class="outlined-action">Clear selection</button>
           <button id="resetButton" type="button" class="outlined-action">Reset view</button>
-          <button id="showXyzButton" type="button" class="outlined-action">Show XYZ</button>
-          <button id="copyXyzButton" type="button" class="primary-action">Copy XYZ</button>
+          <button id="showXyzButton" type="button" class="outlined-action" aria-expanded="false">Show XYZ</button>
+          <button id="copyCoordinatesButton" type="button" class="primary-action">Copy coordinates</button>
         </div>
-      </nav>
-      <section class="measurement-panel" aria-live="polite">
-        <strong id="selectedAtoms">Selected: none</strong>
-        <span id="measurementResult">Tap atoms in order to measure.</span>
       </section>
-      <details id="xyzPanel" class="xyz-panel"><summary>XYZ structure</summary><textarea id="xyzText" readonly spellcheck="false"></textarea></details>
+
+      <p id="lossyNotice" class="lossy-notice" hidden></p>
+      <details id="xyzPanel" class="xyz-panel">
+        <summary>Full XYZ</summary>
+        <textarea id="xyzText" readonly spellcheck="false"></textarea>
+      </details>
       <p id="errorMessage" class="error-message" hidden></p>
     </main>
     <script src="vendor/3Dmol-2.5.3.min.js"></script>
-    <script src="share-codec.js?v=20260918-1"></script>
-    <script src="viewer-math.js?v=20260918-1"></script>
-    <script src="app.js?v=20260918-1"></script>
+    <script src="share-codec.js?v=2484b2b2f43687cd40c4c531586de9c40b45c77b"></script>
+    <script src="viewer-state.js?v=2484b2b2f43687cd40c4c531586de9c40b45c77b"></script>
+    <script src="viewer-math.js?v=2484b2b2f43687cd40c4c531586de9c40b45c77b"></script>
+    <script src="app.js?v=2484b2b2f43687cd40c4c531586de9c40b45c77b"></script>
   </body>
 </html>
