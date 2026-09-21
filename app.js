@@ -14,9 +14,6 @@
     const { viewer, model, atoms, style, selectedIndices, labelsVisible, state } = options;
     viewer.removeAllLabels();
     model.setStyle({}, state.DISPLAY_STYLES[style] || state.DISPLAY_STYLES["ball-stick"]);
-    selectedIndices.forEach((atomIndex) => {
-      model.setStyle({ index: atomIndex }, { sphere: { scale: 0.48 } }, true);
-    });
     if (labelsVisible) {
       atoms.forEach((atom) => viewer.addLabel(atomLabel(atom), state.atomLabelSpec(atom)));
     }
