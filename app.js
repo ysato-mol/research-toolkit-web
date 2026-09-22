@@ -119,6 +119,12 @@
       updateSelection();
     }
 
+    function clearSelection() {
+      if (!selectedIndices.length) return;
+      selectedIndices = [];
+      updateSelection();
+    }
+
     function showStatus(message) {
       windowObject.clearTimeout(statusTimer);
       els.status.textContent = message;
@@ -179,7 +185,8 @@
       els.labels.setAttribute("aria-pressed", String(labelsVisible));
       render();
     });
-    els.clear.addEventListener("click", () => { selectedIndices = []; updateSelection(); });
+    els.clear.addEventListener("click", clearSelection);
+    els.viewer.addEventListener("dblclick", clearSelection);
     els.reset.addEventListener("click", () => { viewer?.zoomTo(); viewer?.render(); });
     els.showXyz.addEventListener("click", () => {
       els.xyzPanel.open = !els.xyzPanel.open;

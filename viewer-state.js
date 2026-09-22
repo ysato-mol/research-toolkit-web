@@ -59,7 +59,9 @@
       backgroundColor: "#ffffff",
       backgroundOpacity: 0.82,
       borderThickness: 0,
-      screenOffset: { x: 10, y: -10 },
+      alignment: "center",
+      screenOffset: { x: 0, y: 0 },
+      inFront: true,
     };
   }
 
@@ -71,7 +73,9 @@
       backgroundColor: "#1c3177",
       backgroundOpacity: 0.92,
       borderThickness: 0,
-      screenOffset: { x: -10, y: 10 },
+      alignment: "center",
+      screenOffset: { x: 0, y: 0 },
+      inFront: true,
     };
   }
 
