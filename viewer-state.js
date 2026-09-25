@@ -1,9 +1,14 @@
 (function (root, factory) {
-  const api = factory();
+  const elementColors = typeof module === "object" && module.exports
+    ? require("./element-colors.js")
+    : root.StructureViewerElementColors;
+  const api = factory(elementColors);
   if (typeof module === "object" && module.exports) module.exports = api;
   if (root) root.StructureViewerState = api;
-})(typeof window !== "undefined" ? window : globalThis, function () {
+})(typeof window !== "undefined" ? window : globalThis, function (elementColors) {
   "use strict";
+
+  const { DEFAULT_ATOM_COLORS } = elementColors;
 
   function freezeStyle(style) {
     Object.values(style).forEach(Object.freeze);
@@ -12,14 +17,14 @@
 
   const DISPLAY_STYLES = Object.freeze({
     "ball-stick": freezeStyle({
-      stick: { radius: 0.13 },
-      sphere: { scale: 0.28 },
+      stick: { radius: 0.13, colorscheme: DEFAULT_ATOM_COLORS },
+      sphere: { scale: 0.28, colorscheme: DEFAULT_ATOM_COLORS },
     }),
     stick: freezeStyle({
-      stick: { radius: 0.15 },
+      stick: { radius: 0.15, colorscheme: DEFAULT_ATOM_COLORS },
     }),
     spacefill: freezeStyle({
-      sphere: { scale: 1 },
+      sphere: { scale: 1, colorscheme: DEFAULT_ATOM_COLORS },
     }),
   });
 
@@ -87,6 +92,7 @@
   }
 
   return {
+    DEFAULT_ATOM_COLORS,
     DISPLAY_STYLES,
     toggleSelection,
     measurementForSelection,
