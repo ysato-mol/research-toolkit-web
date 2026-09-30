@@ -8364,8 +8364,7 @@
       return loadStructure({ ...options, name: options.name || "Shared structure.xyz", explicitFormat: "xyz", replace: options.replace !== false });
     }
 
-    async function loadDetachedSnapshot(input) {
-      const snapshot = await dependencies.createDetachedSnapshot(input);
+    async function loadSnapshot(snapshot) {
       const source = snapshot.sourceStructure;
       const modelId = snapshot.sceneDefinition.modelId;
       const previousViewerIds = [...runtime.keys()];
@@ -8433,6 +8432,10 @@
         setStatus(error?.message || String(error), true);
         throw error;
       }
+    }
+
+    async function loadDetachedSnapshot(input) {
+      return loadSnapshot(await dependencies.createDetachedSnapshot(input));
     }
 
     function openDetachedViewer(viewerId = workspace.getState().activeViewerId) {
@@ -8597,11 +8600,11 @@
         const decoded = await dependencies.share.decodeHash(location.hash);
         if (decoded.version === 3) {
           const definition = { modelId: decoded.settings.modelId, mode: decoded.settings.mode, ...(decoded.settings.scene || {}) };
-          return loadDetachedSnapshot({
+          return loadSnapshot({
             sourceStructure: decoded.source,
             sceneDefinition: definition,
             view: decoded.settings.view,
-            camera: decoded.settings.camera || null,
+            ...(decoded.settings.camera ? { camera: decoded.settings.camera } : {}),
             selection: [], measurements: [],
             crystalSettings: definition.mode === "crystal" ? definition.crystal : null,
           });

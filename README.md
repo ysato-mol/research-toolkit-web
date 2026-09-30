@@ -13,9 +13,51 @@ supercell.
 
 QR generation uses the vendored MIT-licensed `qrcode-generator` 1.4.4 runtime. It is browser-local, with no runtime CDN or external QR service.
 
+## Formats and chemistry policy
+
+Supported formats are XYZ, MOL V2000/V3000, SDF V2000/V3000, PDB, CIF, and
+mmCIF. Multi-record SDF and multi-model PDB inputs remain distinct models in
+the normalized source. Deferred formats are formats outside this list, such as
+MOL2, CUBE, and POSCAR; the Viewer rejects them instead of guessing a parser.
+
+Source bonds from MOL/SDF/PDB or a trusted Toolkit caller are authoritative.
+An explicitly complete bond graph, including an empty graph, is never replaced
+or extended by distance inference. Bond inference is allowed only when the
+source has no authoritative graph. Transition-metal bonds are not inferred
+automatically.
+
+Crystal sources retain their asymmetric unit, exact symmetry operations,
+occupancy, and disorder information. The scene selector can derive an
+**asymmetric unit**, **unit cell**, **symmetry mates**, radius-based **packing**,
+or a bounded **supercell** without mutating the source. Crystal XYZ export is
+explicitly one of **source asymmetric unit**, **visible scene**, or **selected
+component**; an invalid or missing component selection fails closed.
+
+## Toolkit caller API
+
+Toolkit tools call the shared Viewer through:
+
+```js
+StructureViewerApi.open({
+  text,
+  format,
+  displayName,
+  bonds,
+  charge,
+  multiplicity,
+  initialView,
+  destination,
+});
+```
+
+`bonds` is optional and uses zero-based atom endpoints. When supplied, it is a
+validated authoritative graph for those coordinates. `destination` selects the
+current Viewer, a new Viewer tab/window, or URL sharing according to the
+calling tool's workflow.
+
 ## Local check
 
-Open `index.html` directly with `file:`, through the Research Toolkit Local
+Open `index.html` directly with `file://`, through the Research Toolkit Local
 Helper, or from any static HTTP server. The deterministic classic bundle has no
 runtime module, Worker, WASM, or local-asset fetch requirement. A URL without
 share data intentionally shows an error, but local files can be loaded from the
@@ -96,10 +138,27 @@ recorded acceptance evidence.
 
 ## Limits
 
+- Input is limited to 32 MiB, 250,000 source atom sites, 1,000,000 source
+  bonds, 10,000 models/records, and 512 symmetry operations.
+- Derived scenes are limited to 300,000 derived atoms and 1,200,000 derived
+  bonds. Replication ranges are bounded to -10..10 per axis.
+- Share v3 is limited to 8 MiB decoded JSON and 12,000,000 encoded-fragment
+  characters. QR output is limited to a 2,953-byte final URL; capacity failure
+  is reported rather than silently changing scientific content.
+
+## Known limitations
+
 - No server storage, analytics, or backend is used.
-- Very large structures can exceed URL or QR limits. QR generation reports
-  capacity rather than silently reducing scientific content.
+- Parsing and crystal expansion use cooperative main-thread slices. A Worker is
+  not required or shipped in this release.
+- Very large URL shares remain subject to browser and messaging limits even
+  when they are below the codec limits.
 - The viewer is not a structure editor; edits remain in the originating Toolkit
   tool.
 - A `localhost` or `file:` URL is local to that computer. Cross-device links
   must use the configured public deployment URL.
+- Browser release evidence covers current Windows Chrome and Edge. macOS
+  browser acceptance remains environment-dependent.
+- The 300,000-derived-atom limit is enforced, but an exact-boundary positive
+  fixture is still deferred; tested release evidence includes a 27,783-atom
+  crystal scene.
