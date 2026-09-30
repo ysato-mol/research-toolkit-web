@@ -1,0 +1,12 @@
+{
+  "package": "molstar",
+  "version": "5.11.0",
+  "source": "https://github.com/molstar/molstar",
+  "sourceCommit": "7fc2ec55517e3da840ffe9fb09dab7d3065efec2",
+  "npmTarball": "https://registry.npmjs.org/molstar/-/molstar-5.11.0.tgz",
+  "npmTarballSha1": "591a8bdac7eac9851dffb49e5a9e0764a4f1acd6",
+  "npmIntegrity": "sha512-Jv2oHkKoCpzrhqLmGlknepm0pfRsoTDebsGRkvXpbUFb6p+JIAkhLyM3uqV2twC6VR83ZbXtdswOtouPhozpuQ==",
+  "license": "MIT",
+  "bundleTool": "esbuild 0.25.9",
+  "entry": "molstar-cif-parser.entry.js"
+}

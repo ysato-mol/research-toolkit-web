@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <title>Research Toolkit Structure Viewer</title>
-    <link rel="stylesheet" href="app.css?v=180a039f4832bd1b9bcfc61f0992fff3fb4f6f2b">
+    <link rel="stylesheet" href="app.css?v=__RT_VIEWER_BUILD__">
   </head>
   <body>
     <main class="viewer-shell">
@@ -12,48 +12,51 @@
         <p class="product-label">Research Toolkit · Structure Viewer</p>
         <span id="structureSummary" class="summary"></span>
       </header>
-
+      <div class="workspace-bar">
+        <nav id="workspaceTabs" class="workspace-tabs" role="tablist" aria-label="Open structures"></nav>
+        <div class="workspace-actions">
+          <label class="comparison-select" hidden><span class="sr-only">Comparison Viewer</span><select id="secondaryViewerSelect" aria-label="Comparison Viewer"></select></label>
+          <button id="compareViewerButton" type="button" class="workspace-action" title="Compare two Viewers" aria-label="Compare Viewers" aria-pressed="false">▥</button>
+          <button id="duplicateViewerButton" type="button" class="workspace-action" title="Duplicate active Viewer" aria-label="Duplicate Viewer">⧉</button>
+          <button id="newViewerButton" type="button" class="workspace-action" title="Open an empty Viewer" aria-label="New Viewer">+</button>
+        </div>
+      </div>
       <section id="viewerStage" class="viewer-stage" aria-label="Molecular structure viewer">
-        <div id="viewer" class="viewer"><p>Loading shared structure...</p></div>
+        <div id="viewer" class="viewer"><p>Open or drop XYZ, MOL, SDF, PDB, CIF, or mmCIF structures.</p></div>
         <output id="measurementOverlay" class="measurement-overlay" aria-live="polite" hidden></output>
         <output id="statusMessage" class="status-message" aria-live="polite" hidden></output>
         <span class="resize-affordance" aria-hidden="true"></span>
       </section>
-
+      <section id="crystalPanelHost" class="crystal-panel-host" aria-label="Crystal settings" hidden></section>
       <section class="viewer-controls" aria-label="Viewer controls">
         <div class="control-section display-controls">
           <span class="control-heading">Display</span>
-          <label class="style-control">
-            <span class="sr-only">Molecule style</span>
-            <select id="styleSelect">
-              <option value="ball-stick">Ball &amp; stick</option>
-              <option value="stick">Stick</option>
-              <option value="spacefill">Spacefill</option>
-            </select>
-          </label>
+          <label class="model-control" hidden><span class="sr-only">Structure model</span><select id="modelSelect" aria-label="Structure model"></select></label>
+          <label class="style-control"><span class="sr-only">Molecule style</span><select id="styleSelect"><option value="ball-stick">Ball &amp; stick</option><option value="stick">Stick</option><option value="spacefill">Spacefill</option></select></label>
           <button id="labelsButton" type="button" class="tonal-action" aria-pressed="false">Labels</button>
         </div>
         <div class="control-section action-controls">
           <span class="control-heading">Actions</span>
+          <button id="openButton" type="button" class="outlined-action">Open</button>
+          <input id="fileInput" type="file" accept=".xyz,.mol,.sdf,.pdb,.ent,.cif,.mmcif,chemical/x-xyz,chemical/x-mdl-molfile,chemical/x-mdl-sdfile,chemical/x-pdb,chemical/x-cif,text/plain" multiple hidden>
           <button id="clearButton" type="button" class="outlined-action">Clear selection</button>
           <button id="resetButton" type="button" class="outlined-action">Reset view</button>
           <button id="showXyzButton" type="button" class="outlined-action" aria-expanded="false">Show XYZ</button>
           <button id="copyCoordinatesButton" type="button" class="primary-action">Copy coordinates</button>
+          <button id="exportXyzButton" type="button" class="outlined-action">Export XYZ</button>
+          <button id="shareButton" type="button" class="outlined-action">Share</button>
+          <button id="pngButton" type="button" class="outlined-action">PNG</button>
+          <button id="openDetachedButton" type="button" class="outlined-action">Open in New Window</button>
         </div>
       </section>
-
       <p id="lossyNotice" class="lossy-notice" hidden></p>
-      <details id="xyzPanel" class="xyz-panel">
-        <summary>Full XYZ</summary>
-        <textarea id="xyzText" readonly spellcheck="false"></textarea>
-      </details>
-      <p id="errorMessage" class="error-message" hidden></p>
+      <details id="xyzPanel" class="xyz-panel"><summary>Full XYZ</summary><textarea id="xyzText" readonly spellcheck="false"></textarea></details>
+      <p id="errorMessage" class="error-message" role="alert" aria-live="assertive" hidden></p>
     </main>
     <script src="vendor/3Dmol-2.5.3.min.js"></script>
-    <script src="share-codec.js?v=180a039f4832bd1b9bcfc61f0992fff3fb4f6f2b"></script>
-    <script src="element-colors.js?v=180a039f4832bd1b9bcfc61f0992fff3fb4f6f2b"></script>
-    <script src="viewer-state.js?v=180a039f4832bd1b9bcfc61f0992fff3fb4f6f2b"></script>
-    <script src="viewer-math.js?v=180a039f4832bd1b9bcfc61f0992fff3fb4f6f2b"></script>
-    <script src="app.js?v=180a039f4832bd1b9bcfc61f0992fff3fb4f6f2b"></script>
+    <script src="vendor/openchemlib-9.18.2.min.js"></script>
+    <script src="vendor/molstar-cif-parser.js"></script>
+    <script src="dist/structure-viewer.bundle.js?v=__RT_VIEWER_BUILD__"></script>
+    <script src="app.js?v=__RT_VIEWER_BUILD__"></script>
   </body>
 </html>

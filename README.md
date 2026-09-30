@@ -1,150 +1,105 @@
 # Structure Viewer
 
-Static, single-structure viewer for Research Toolkit share URLs. Structure data
-is compressed into the URL fragment and is not sent to a server by the Viewer.
+Static, browser-only molecular and crystal viewer for Research Toolkit. It
+accepts XYZ, MOL/SDF, PDB, CIF, and mmCIF input, keeps independent state for
+multiple viewer tabs, and supports measurement, PNG/coordinate export, QR
+sharing, and detached windows. Share payloads stay in the URL fragment and are
+not sent to a server by the viewer.
 
-## Target public viewer and URL compatibility
+Existing `structure-share/1` and XYZ `structure-share/2` links remain readable.
+Lossless multi-format and crystal state uses `structure-share/3`; crystal shares
+store the source structure and viewer settings rather than an expanded
+supercell.
 
-The intended production deployment is:
-
-`https://ysato-mol.github.io/research-toolkit-web/`
-
-The current private source generates lossless `structure-share/2` links for
-that target:
-
-`https://ysato-mol.github.io/research-toolkit-web/#v=2&data=<codec>.<base64url>`
-
-Treat this as the target deployment until the allowlisted public sync, push,
-and GitHub Pages verification in the publication workflow are complete.
-
-Lossless links preserve atom order, element symbols, coordinate tokens, charge,
-and multiplicity. Title, display style, labels, camera, selection, measurements,
-and bonds are not shared. Bonds are inferred from the coordinates when the link
-opens.
-
-Legacy migration note: existing `structure-share/1` links remain readable and
-are normalized to the current Viewer input model. Research Toolkit no longer
-creates new v1 links.
-
-## Sharing and QR limits
-
-**Copy URL** creates the lossless v2 link immediately. **Make QR** opens QR-only
-settings for coordinate precision (Lossless, 0.0001, 0.001, 0.01, or 0.05 A),
-hydrogen inclusion, charge inclusion, multiplicity inclusion, and error
-correction (L, M, Q, or H). The QR profile is still `structure-share/2`.
-
-The browser tests the complete URL against the real byte-mode encoder up to the
-standard maximum QR version 40. **Generate QR** is available only when the
-selected profile fits one QR. **Auto fit** tries the highest-quality profiles
-first, omits multiplicity and then charge only at 0.05 A, and removes hydrogens
-only after all higher-quality all-atom choices fail. Some large structures may
-not fit one QR even after Auto fit; the lossless URL remains available.
-
-QR generation and PNG saving happen locally. PNG output is a black-on-white QR
-with an integer module scale and at least a four-module quiet zone; the long URL
-is not painted into the image.
-
-## Coordinates
-
-**Show XYZ** displays a complete XYZ document with atom count and the fixed
-comment `Research Toolkit shared structure`. **Copy coordinates** copies only
-the `Element X Y Z` rows, preserving the decoded coordinate tokens and omitting
-the atom count and comment. Its clipboard fallback selects the same
-coordinate-only text.
+QR generation uses the vendored MIT-licensed `qrcode-generator` 1.4.4 runtime. It is browser-local, with no runtime CDN or external QR service.
 
 ## Local check
 
-Open `index.html` through the Research Toolkit Local Helper, or serve the
-repository with any static HTTP server. A URL without share data intentionally
-shows an error.
+Open `index.html` directly with `file:`, through the Research Toolkit Local
+Helper, or from any static HTTP server. The deterministic classic bundle has no
+runtime module, Worker, WASM, or local-asset fetch requirement. A URL without
+share data intentionally shows an error, but local files can be loaded from the
+Viewer UI.
 
-## Publication workflow
+## Public viewer
 
-`research-toolkit/web/structure-viewer/` in the private repository is the sole
-source of truth. Never edit generated Viewer files directly in the public
-checkout.
+The default cross-device viewer is:
 
-The public checkout origin fetch and push URLs must both be exactly:
+`https://ysato-mol.github.io/research-toolkit-web/`
 
-`https://github.com/ysato-mol/research-toolkit-web.git`
+The complete `research-toolkit/web/structure-viewer/` directory is the only source of truth. Do not edit matching files directly in `research-toolkit-web`; publish them with the synchronization script below.
 
-Publish in this order:
+## Publish workflow
 
-1. Implement and run the complete private regression gate in
-   `research-toolkit`.
-2. Before changing public files, replace all configured fetch and push URLs with
-   one exact URL each, then require both complete lists to contain exactly that
-   one value:
+1. Implement and test changes in the private `research-toolkit` repository.
+2. Run all related tests before touching the public repository:
 
    ```powershell
-   $expectedRemote = "https://github.com/ysato-mol/research-toolkit-web.git"
-   git -C ..\research-toolkit-web config --replace-all remote.origin.url $expectedRemote
-   git -C ..\research-toolkit-web config --replace-all remote.origin.pushurl $expectedRemote
-   $fetchRemotes = @(git -C ..\research-toolkit-web remote get-url --all origin)
-   $pushRemotes = @(git -C ..\research-toolkit-web remote get-url --push --all origin)
-   $fetchRemotes
-   $pushRemotes
-   if ($fetchRemotes.Count -ne 1 -or $fetchRemotes[0] -cne $expectedRemote -or
-       $pushRemotes.Count -ne 1 -or $pushRemotes[0] -cne $expectedRemote) {
-     throw "Public fetch/push remote lists must each contain only the expected URL."
-   }
-   git -C ..\research-toolkit-web status --short
+   node tests/structure_share.test.js
+   py -m unittest tests.test_structure_viewer_sync
    ```
 
-3. Preview the exact allowlisted operation. DryRun reports the private commit
-   used for cache versions and writes nothing:
+3. Preview the exact allowlisted copy operation. This does not write files:
 
    ```powershell
-   .\scripts\sync_structure_viewer_to_public.ps1 -DestinationPath ..\research-toolkit-web -DryRun
+   .\scripts\sync_structure_viewer_to_public.ps1 -DryRun
    ```
 
-4. Run the same command without `-DryRun` to generate the public files:
+4. Synchronize the allowlisted Viewer files:
 
    ```powershell
-   .\scripts\sync_structure_viewer_to_public.ps1 -DestinationPath ..\research-toolkit-web
+   .\scripts\sync_structure_viewer_to_public.ps1
    ```
 
-5. Review the generated public checkout before committing:
+5. Review the public repository before committing:
 
    ```powershell
    git -C ..\research-toolkit-web status --short
    git -C ..\research-toolkit-web diff --
-   git -C ..\research-toolkit-web diff --check
    ```
 
-6. Commit the reviewed generated files in `research-toolkit-web`, push to the
-   verified origin without force-pushing, and open
-   `https://ysato-mol.github.io/research-toolkit-web/`.
-7. On GitHub Pages, verify desktop and approximately 390 px mobile layouts,
-   display styles, labels, selection/measurement behavior, reset, XYZ display,
-   coordinate copying, lossless URL sharing, QR capacity and Auto fit, PNG
-   saving, and desktop/touch resize behavior.
+6. Commit and push from `research-toolkit-web` only after the diff contains the expected generated Viewer changes. Then open the GitHub Pages URL with a real `#v=1&data=...` payload and verify rendering, desktop resize, fixed mobile sizing, labels, measurements, reset, XYZ display, and XYZ copy.
 
-The synchronization script validates the source, destination Git repository,
-exactly one fetch and one push origin URL, and every managed path before
-writing. It copies only its explicit allowlist, never pushes, never recursively
-deletes the destination, rejects reparse-point paths, and never changes `.git/`.
-It replaces the private build placeholder in generated `index.html` with the
-tested private commit ID so all Viewer assets share one cache version.
+The sync script validates the source, destination Git repository, and expected GitHub remote. It copies only its explicit file allowlist, never pushes, never recursively deletes the destination, and never changes `.git/`. Retired public files must be added explicitly to the script's safe retired-file list.
+
+## Share formats
+
+`https://ysato-mol.github.io/research-toolkit-web/#v=1&data=<codec>.<base64url>`
+
+- v1: legacy XYZ read compatibility.
+- v2: current compact XYZ sharing and QR profiles.
+- v3: lossless multi-format/crystal source plus scene and view settings.
+
+Modern browsers use deflate compression where the protocol permits it; the
+classic bundle retains compatible browser-local fallbacks.
 
 ## Browsers
 
-Current Chrome, Edge, Firefox, and Safari on Windows, macOS, iOS, and Android
-are supported. Mouse/touch rotation and wheel/pinch zoom are provided by the
-bundled 3Dmol.js viewer.
+The release gate records tested Chrome and Edge versions in
+`release-manifest.json` for both HTTP and direct `file:` operation. Mouse/touch
+rotation and wheel/pinch zoom are provided by the bundled 3Dmol.js viewer.
 
-## Vendored QR encoder
+## Build and acceptance
 
-QR matrix generation uses the pinned `qrcode-generator` 1.4.4 browser build and
-its MIT license under `vendor/`. Both are published from the private source by
-the allowlisted sync. There is no runtime CDN or external QR service, and no
-upload.
+```powershell
+node scripts\build_structure_viewer_bundle.js
+node scripts\build_structure_viewer_release_manifest.js
+node scripts\run_structure_viewer_release_tests.js
+py -m unittest tests.test_structure_viewer_sync
+```
+
+The generated `release-manifest.json` records source hashes, the bundle hash,
+public files, vendored licenses, capabilities, and tested browser versions. It
+contains no generation timestamp, so identical sources produce byte-identical
+release metadata. See `docs/structure-viewer-release-checklist.md` for the
+recorded acceptance evidence.
 
 ## Limits
 
-- One XYZ structure is stored per URL.
-- There is no editing, server storage, analytics, or backend.
-- Very large lossless URLs can exceed limits in messaging apps or browsers;
-  Research Toolkit warns at 8,000 characters.
-- A saved local, loopback, or `file:` Viewer address is migrated to the public
-  production URL. An intentional valid HTTPS custom deployment remains usable.
+- No server storage, analytics, or backend is used.
+- Very large structures can exceed URL or QR limits. QR generation reports
+  capacity rather than silently reducing scientific content.
+- The viewer is not a structure editor; edits remain in the originating Toolkit
+  tool.
+- A `localhost` or `file:` URL is local to that computer. Cross-device links
+  must use the configured public deployment URL.

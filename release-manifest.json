@@ -1,0 +1,131 @@
+{
+  "schema": "rt-structure-viewer-release/1",
+  "sourceHashes": {
+    "web/structure-viewer/README.md": "a9b0cc15657b0231c8767cfc2a549c6820833e4be8b4d1d2d17b8a533bc82a84",
+    "web/structure-viewer/app.css": "aa33d98b18231eaa60521bdd635a1e3283eda1433d79bd6320d42ae68fabd95b",
+    "web/structure-viewer/app.js": "fb8aa9f8812abf765a5f844d83ad637863f8c5b199246fe4013090eeb2a16ee7",
+    "web/structure-viewer/core/atom-identity.js": "c060642ed1d788b76feb71834b5e91ab81bf28211d71bf86bfc05c5bc423ede2",
+    "web/structure-viewer/core/canonical-json.js": "7b8541552d4acaec740212d4df362771c32c33add2afaa1d75c70e77057a4848",
+    "web/structure-viewer/core/constants.js": "1943e0993819f23831324237476f48e9d63e9cd54f37ad9cab62dd83a3926aae",
+    "web/structure-viewer/core/contracts.js": "b814f8bec0a7461ef81887c4c25a6a7b4b709d1e920152a09c26bd5dad116c44",
+    "web/structure-viewer/core/exporters.js": "d25bf16f9fb2a916198dd0b647b7380a842c91ccf5a4d9646fb7e6c58b0e13ef",
+    "web/structure-viewer/core/format-detector.js": "ce1ad221b66d3bcc2aac2304a6516f66c8774202eb8fb257a414b5b9e41c9def",
+    "web/structure-viewer/core/scene-builder.js": "e6063de2ca6932d6fc5c76130db1e2a2f87dc4c7f475fbfffe1adc316f283516",
+    "web/structure-viewer/core/scene-definition.js": "9ef2d482e92582a0c4664f3f4e3167306438ce4e4ff5b43d8e3c4efea821caac",
+    "web/structure-viewer/core/structure-factory.js": "c6f5742340b14e73198528d3e350ad2ff3823f2cfd4b6dbe356724ec3970a678",
+    "web/structure-viewer/core/validators.js": "8168c89f8aa340b79ac17da5b6f368c843202216a5f968718ee223fc2710c463",
+    "web/structure-viewer/crystal/disorder.js": "77b77fafa9f9a156ad7a573c2a816761f8d4914da4559f217a2bbaad0eb95545",
+    "web/structure-viewer/crystal/expander.js": "53d139b71c9ead9371a9a4dc0516425f6cbbc784130b8458b6f45dcabc888671",
+    "web/structure-viewer/crystal/packing.js": "c803fa44bd32768e2921c21586f67d8f1904d4972da5e945cd885b4f3c67a12c",
+    "web/structure-viewer/crystal/scene-builder.js": "8da100e4e1c2cd94459486132df2dfd8a57e75ece731241292f20be99b12a5a6",
+    "web/structure-viewer/crystal/symmetry.js": "1531da3f64e8953b574aae3f2a12a0dea6e3ada098780649301c03669e9263dc",
+    "web/structure-viewer/crystal/unit-cell.js": "4d15d8545985bc3589073ef5cbd017322e98024f12dc750d6d85be38ac70b7de",
+    "web/structure-viewer/index.html": "f6dc07551cfff83b42581a83e90f5b07baeec5deef511c873ee9bae29bbb43a3",
+    "web/structure-viewer/parsers/cif-parser.js": "65154a6d59a0315d1c746e64101fa3b98cc80c59b61a999b1c3f5678294f4b0d",
+    "web/structure-viewer/parsers/mol-parser.js": "24f8b633da681caa7bf36389bc9dfbec321d1810f164cefd2da2eae42b85428b",
+    "web/structure-viewer/parsers/pdb-parser.js": "bb7bdabb1dbfafb4d2d90e55cc910347a3453a42b2244162093e8b08c6ed1cba",
+    "web/structure-viewer/parsers/registry.js": "5fc985d94585db287b4d68867facf52e5d47e5a6ea02cb1f8ab8191d3573e110",
+    "web/structure-viewer/parsers/sdf-parser.js": "465ec6d46febd5a3fd21b018da142bc95d04ecc5f41b7d7264bbfe578b19a885",
+    "web/structure-viewer/parsers/xyz-parser.js": "9934cf910ff80b27813988f4bc1aa0de98d91cf561d65889862a8067e225cb25",
+    "web/structure-viewer/renderers/3dmol-renderer.js": "edfa46f038d3eb8b86539416fbd995c1118a257d3ba1199b5be51ba463fafcb2",
+    "web/structure-viewer/renderers/renderer-contract.js": "216e68e5dfbc44444c740d00383f8c6d4edfe38065b4f9dd2f0719a4de4352d4",
+    "web/structure-viewer/share-codec.js": "3941b8bf79af3c59d3335f604f61344888c62a3380223da1c651c974ac4c4e98",
+    "web/structure-viewer/share/qr-share.js": "10d01fd3023097186911a57171a59b637d86ba241f7c72b3f39905f3455a0ca5",
+    "web/structure-viewer/share/share-v2.js": "69a4cad95a9339557e8f274dbab35850b33fa6bafd9eedd1e9006fb0acb605d6",
+    "web/structure-viewer/share/share-v3.js": "88ff7bd12bebb7fc814549668a613eb248ff6d019246974607f77fa416099f55",
+    "web/structure-viewer/toolkit-api.js": "c25487922f31cebc717d8a11ccd0c490e8e725e4337d1fcdbb2ced5602e9bcab",
+    "web/structure-viewer/transfer/window-transfer.js": "17aaa24efbb14100122249097e8baaa4bf6b6f136c285f722010d65927d9dcab",
+    "web/structure-viewer/ui/app-controller.js": "ae7fb6a54367fc1e08e18036a0fb375adbed2cc69fcde762884ac820d6f7833b",
+    "web/structure-viewer/ui/crystal-panel.js": "9efd3cfb75d11428c006fc879fb9ecb88829c7146f1fece82de49001cca72d5a",
+    "web/structure-viewer/ui/multi-instance-harness.js": "5fd52a0d678972b03ddff60b7beb33fa4621ed2f10c33f62088f3cf990516476",
+    "web/structure-viewer/ui/viewer-pane.js": "97a31999896fb9f9c66b15395ce66cf0f605403fd191753965e5cbe9ff11440f",
+    "web/structure-viewer/ui/workspace-tabs.js": "94c15ee3e4eb746685b7569d7060679ce387afe236582b843c04cc07b197dbee",
+    "web/structure-viewer/viewer-math.js": "79313e68f6cf5e1dfdd58ca3cdb2413f50456433537a3f714dee6088bb4ba759",
+    "web/structure-viewer/workspace/viewer-instance.js": "eff71f347d8747059d37ed5b1d7cc97ceada2643f7383fb9b521b582a8409997",
+    "web/structure-viewer/workspace/workspace-store.js": "256a839998ebf630e81844c18d745cb6bc8081c7a98925b888bee35ac7266c6d"
+  },
+  "bundle": {
+    "path": "web/structure-viewer/dist/structure-viewer.bundle.js",
+    "sha256": "33bcf804cea59197d1ef9604c8f1686570257ca2040e63e8aee01556a03e9cf8",
+    "bytes": 450578
+  },
+  "publicFiles": [
+    "web/structure-viewer/index.html",
+    "web/structure-viewer/app.css",
+    "web/structure-viewer/app.js",
+    "web/structure-viewer/README.md",
+    "web/structure-viewer/release-manifest.json",
+    "web/structure-viewer/share-codec.js",
+    "web/structure-viewer/toolkit-api.js",
+    "web/structure-viewer/viewer-math.js",
+    "web/structure-viewer/dist/structure-viewer.bundle.js",
+    "web/structure-viewer/vendor/3Dmol-2.5.3.min.js",
+    "web/structure-viewer/vendor/3Dmol-2.5.3.LICENSE.txt",
+    "web/structure-viewer/vendor/openchemlib-9.18.2.min.js",
+    "web/structure-viewer/vendor/openchemlib-9.18.2.LICENSE.txt",
+    "web/structure-viewer/vendor/molstar-cif-parser.js",
+    "web/structure-viewer/vendor/molstar-LICENSE.txt",
+    "web/structure-viewer/vendor/molstar-PROVENANCE.json",
+    "web/structure-viewer/vendor/qrcode-generator-1.4.4.min.js",
+    "web/structure-viewer/vendor/qrcode-generator-1.4.4.LICENSE.txt"
+  ],
+  "vendoredLicenses": [
+    {
+      "id": "3dmol",
+      "version": "2.5.3",
+      "spdx": "BSD-3-Clause",
+      "asset": "web/structure-viewer/vendor/3Dmol-2.5.3.min.js",
+      "licenseFile": "web/structure-viewer/vendor/3Dmol-2.5.3.LICENSE.txt"
+    },
+    {
+      "id": "openchemlib",
+      "version": "9.18.2",
+      "spdx": "BSD-3-Clause",
+      "asset": "web/structure-viewer/vendor/openchemlib-9.18.2.min.js",
+      "licenseFile": "web/structure-viewer/vendor/openchemlib-9.18.2.LICENSE.txt"
+    },
+    {
+      "id": "molstar-cif-parser",
+      "version": "4.8.0",
+      "spdx": "MIT",
+      "asset": "web/structure-viewer/vendor/molstar-cif-parser.js",
+      "licenseFile": "web/structure-viewer/vendor/molstar-LICENSE.txt"
+    },
+    {
+      "id": "qrcode-generator",
+      "version": "1.4.4",
+      "spdx": "MIT",
+      "asset": "web/structure-viewer/vendor/qrcode-generator-1.4.4.min.js",
+      "licenseFile": "web/structure-viewer/vendor/qrcode-generator-1.4.4.LICENSE.txt"
+    }
+  ],
+  "capabilities": {
+    "formats": [
+      "xyz",
+      "mol",
+      "sdf",
+      "pdb",
+      "cif",
+      "mmcif"
+    ],
+    "shareProtocols": [
+      1,
+      2,
+      3
+    ],
+    "directFile": true,
+    "multipleViewers": true,
+    "detachedWindow": true,
+    "crystalScenes": [
+      "asymmetric-unit",
+      "unit-cell",
+      "symmetry-mates",
+      "supercell",
+      "packing"
+    ]
+  },
+  "browsers": {
+    "chrome": "Chrome/153.0.8010.53",
+    "edge": "Edg/154.0.4258.37"
+  }
+}
