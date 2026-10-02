@@ -1,7 +1,7 @@
 {
   "schema": "rt-structure-viewer-release/1",
   "sourceHashes": {
-    "web/structure-viewer/README.md": "3dd2cf494391d6e56076e081062887c48a9591f7d58416a305b1440250181cef",
+    "web/structure-viewer/README.md": "60346b5d6f58413bd8178b998637c83a977e5de588171f8e2825b55318d00e97",
     "web/structure-viewer/app.css": "51de906da6b0fc4cba561ea51be3fbd7ca50de99fa0781e7b37d50453426f588",
     "web/structure-viewer/app.js": "f7e25a45e2b00c56cd8ee38f4cd0f027c675e9b902a107bbf5c135637e9b547a",
     "web/structure-viewer/core/atom-identity.js": "159c212b79031ef53cb9936305e5032b3126001ea31ad2ddfe623f19bd2ab203",
@@ -23,7 +23,7 @@
     "web/structure-viewer/crystal/supercell-size.js": "674785b63ebdc68e87b671d414503dc57a07a6db9e7040632ddbe02fc323c518",
     "web/structure-viewer/crystal/symmetry.js": "5ada5a029a52e10826f57bccbbcfa29a919008873047b55b47d43ab285f2339f",
     "web/structure-viewer/crystal/unit-cell.js": "73439b27c334c81361762c1335296854ada4df8e403ceb42a103d8e437961f23",
-    "web/structure-viewer/index.html": "d70b58b57c7efe215445dd31190610144f9c4d18f0ff7f6a9bcc111ca3645916",
+    "web/structure-viewer/index.html": "0b0aec237ab360bf531ff170929a3db93f7e95260bf7eb803601fc8e2dd46aa5",
     "web/structure-viewer/parsers/cif-parser.js": "ca6ab5a55a1a8b58355f6e49780fe96b9bda3eb9f89b3f802747d468450a5dd1",
     "web/structure-viewer/parsers/mol-parser.js": "216ecef9d44ff96e0fc1003c33b98d47c01dddc0c53cc70d3641aaf51031f04b",
     "web/structure-viewer/parsers/pdb-parser.js": "d1e6e1326d7714a87cae90463d0bfab24be62e9a9045fda2eb590b79fef6e657",

@@ -19,6 +19,9 @@ crystal sources. Toolkit routes reuse the shared navigation, language, and
 theme settings. Public and standalone copies retain the same workbench with
 self-contained settings and assets.
 
+Keep the CSS, app and bundle query versions in index.html synchronized and
+change them with each public release so returning browsers load the new UI.
+
 ## Formats and chemistry policy
 
 Supported formats are XYZ, MOL V2000/V3000, SDF V2000/V3000, PDB, CIF, and
