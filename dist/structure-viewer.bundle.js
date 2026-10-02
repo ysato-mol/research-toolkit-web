@@ -8859,11 +8859,10 @@
     const feedback = createElement(document, "div", { className: "crystal-feedback" });
     const cameraControls=createElement(document,"fieldset",{className:"crystal-camera-controls"});
     cameraControls.append(createElement(document,"legend",{},"View"));
-    const projection=createElement(document,"button",{type:"button",className:"outlined-action","aria-label":"Projection"});
+    const projection=createElement(document,"button",{type:"button",className:"outlined-action crystal-projection-toggle","aria-label":"Projection"});
     function reflectProjection(value){
       projection.value=value==="orthographic"?"orthographic":"perspective";
       const text=projection.value==="orthographic"?"Orthographic":"Perspective";
-      projection.setAttribute("data-viewer-text",text);
       projection.textContent=text;
       projection.setAttribute("aria-pressed",String(projection.value==="orthographic"));
     }

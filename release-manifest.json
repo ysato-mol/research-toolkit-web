@@ -2,7 +2,7 @@
   "schema": "rt-structure-viewer-release/1",
   "sourceHashes": {
     "web/structure-viewer/README.md": "9b366d8ec84cb39e207718d8cf50a5801d0cfef8efe5d65ed737b53299c58fad",
-    "web/structure-viewer/app.css": "2141465ca0841e2475f73e4276ce8c446077e91ffa6178648471ec86762e7f43",
+    "web/structure-viewer/app.css": "b7e960f0a07e47d45f1f8d118f592ef4834e93c6aeb7c3510d6e28b4ee660448",
     "web/structure-viewer/app.js": "f7e25a45e2b00c56cd8ee38f4cd0f027c675e9b902a107bbf5c135637e9b547a",
     "web/structure-viewer/core/atom-identity.js": "159c212b79031ef53cb9936305e5032b3126001ea31ad2ddfe623f19bd2ab203",
     "web/structure-viewer/core/canonical-json.js": "d024b2d80b0e1ee407f85f2d265e8a7e6325599810586bf457df25667bd97d7e",
@@ -26,7 +26,7 @@
     "web/structure-viewer/crystal/supercell-size.js": "674785b63ebdc68e87b671d414503dc57a07a6db9e7040632ddbe02fc323c518",
     "web/structure-viewer/crystal/symmetry.js": "5ada5a029a52e10826f57bccbbcfa29a919008873047b55b47d43ab285f2339f",
     "web/structure-viewer/crystal/unit-cell.js": "73439b27c334c81361762c1335296854ada4df8e403ceb42a103d8e437961f23",
-    "web/structure-viewer/index.html": "c14904c19b58c41fbc6bac6931acca91a864ddb654bf2a6f3ab8d2f50d3e7a4e",
+    "web/structure-viewer/index.html": "374e0686f39349f98f580743e48d9f3ffe724bf8d28befcceccb79bb387949a0",
     "web/structure-viewer/parsers/cif-parser.js": "acaf1baf213d9a794facf60357395df2fed5d40c1567c119d232474744062c92",
     "web/structure-viewer/parsers/mol-parser.js": "216ecef9d44ff96e0fc1003c33b98d47c01dddc0c53cc70d3641aaf51031f04b",
     "web/structure-viewer/parsers/pdb-parser.js": "d1e6e1326d7714a87cae90463d0bfab24be62e9a9045fda2eb590b79fef6e657",
@@ -43,7 +43,7 @@
     "web/structure-viewer/toolkit-api.js": "a68176975b57edf463937ed25724929243db4862e2249e754a2070ecfa4dfab9",
     "web/structure-viewer/transfer/window-transfer.js": "e8c9e0c68dfcf144a5602740df2d8126c64088b782cb1e001eec6a368bfd3dbc",
     "web/structure-viewer/ui/app-controller.js": "56cd6757e90a43a885ef439634bbc11280df6423a43584b6ec4a14cdd74649e6",
-    "web/structure-viewer/ui/crystal-panel.js": "68c86db19b7dea877a8314ce70cdecdf0bf6246d527ba1f630b89d18381415e8",
+    "web/structure-viewer/ui/crystal-panel.js": "2b856b22972f057cfd49ccc2d13b1f7432912145429a7cfaa5efd1490cd01348",
     "web/structure-viewer/ui/multi-instance-harness.js": "1855b8c1289aa365f2d443ae25abd6302dfcffee5c73fd1ab1e39dea47270cbb",
     "web/structure-viewer/ui/viewer-pane.js": "176fbf0d61a872d775e04a988163b191d524ab7598e219e03cf193df86d292cb",
     "web/structure-viewer/ui/workbench.js": "4d533509c1d08f0b779faec2cc3b78ce377317685e0d78f094ed6ba6c3ed1009",
@@ -54,8 +54,8 @@
   },
   "bundle": {
     "path": "web/structure-viewer/dist/structure-viewer.bundle.js",
-    "sha256": "56948ddea3fd12f68ab809c9547748e43e8e07d671fa8f56d3009a820e6668f4",
-    "bytes": 537805
+    "sha256": "cbb88146c16bd01a90a1e17d1dd6544d7387be6c6dd674519f52be1064bb8de0",
+    "bytes": 537775
   },
   "publicFiles": [
     "web/structure-viewer/index.html",
