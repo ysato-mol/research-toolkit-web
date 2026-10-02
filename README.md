@@ -151,6 +151,18 @@ settings, including explicit legacy count/radius and wrapping settings, are
 restored as saved. Ranges, grid visibility and hidden periodic components are
 stored in new shares without changing source content or atom identity.
 
+XYZ display, copy and file export default to the visible crystal scene, including
+expanded packing cells and excluding hidden molecules. Source asymmetric unit and
+selected component remain explicit export choices; coordinates retain their lattice
+positions independently of camera rotation. Copy outputs coordinate rows; XYZ file
+export includes the atom count and comment header.
+
+A fixed upper-left a/b/c orientation indicator follows the camera rotation and
+uses the actual (including triclinic) lattice basis. Crystal axes can be toggled
+independently of cell edges; their visibility is retained in v3 shares. Explicit
+axis settings in saved shares are honored. Representation names are ball & stick,
+stick and spacefill in both interface languages.
+
 Distance, angle and dihedral values appear at the lower left of the viewer.
 Selected-atom details are in Info / XYZ; there is no Measurements tab. Double-click inside a
 viewer, including its canvas, to clear that viewer's selection.

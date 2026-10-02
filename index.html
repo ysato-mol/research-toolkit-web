@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <title>Research Toolkit Structure Viewer</title>
-    <link rel="stylesheet" href="app.css?v=20261002-crystal-info">
+    <link rel="stylesheet" href="app.css?v=20261002-visible-xyz-axes">
   </head>
   <body>
     <header class="app-header">
@@ -32,7 +32,7 @@
           <div class="viewer-tool-strip" aria-label="Viewer controls">
             <button id="openButton" type="button" class="outlined-action secondary">Open</button>
             <input id="fileInput" type="file" accept=".xyz,.mol,.sdf,.pdb,.ent,.cif,.mmcif,chemical/x-xyz,chemical/x-mdl-molfile,chemical/x-mdl-sdfile,chemical/x-pdb,chemical/x-cif,text/plain" multiple hidden>
-            <label class="style-control"><span class="sr-only">Molecule style</span><select id="styleSelect"><option value="ball-stick">Ball &amp; stick</option><option value="stick">Stick</option><option value="spacefill">Spacefill</option></select></label>
+            <label class="style-control"><span class="sr-only">Molecule style</span><select id="styleSelect"><option value="ball-stick">ball &amp; stick</option><option value="stick">stick</option><option value="spacefill">spacefill</option></select></label>
             <button id="labelsButton" type="button" class="tonal-action" aria-pressed="false">Labels</button>
             <button id="clearButton" type="button" class="outlined-action secondary">Clear selection</button>
             <button id="resetButton" type="button" class="outlined-action secondary">Reset view</button>
@@ -71,7 +71,7 @@
     <script src="vendor/3Dmol-2.5.3.min.js"></script>
     <script src="vendor/openchemlib-9.18.2.min.js"></script>
     <script src="vendor/molstar-cif-parser.js"></script>
-    <script src="dist/structure-viewer.bundle.js?v=20261002-crystal-info"></script>
-    <script src="app.js?v=20261002-crystal-info"></script>
+    <script src="dist/structure-viewer.bundle.js?v=20261002-visible-xyz-axes"></script>
+    <script src="app.js?v=20261002-visible-xyz-axes"></script>
   </body>
 </html>

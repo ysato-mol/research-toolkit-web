@@ -4892,7 +4892,7 @@
       labels: { mode: "none", showSelectionOrder: true },
       hydrogenDisplay: "show",
       backgroundColor: dependencies.resolveViewerBackground(visualOptions),
-      crystalDisplay: { showUnitCell: true, showCellAxes: false },
+      crystalDisplay: { showUnitCell: true, showCellAxes: true },
     };
   }
 
@@ -5427,6 +5427,19 @@
     return unitCellEdges(scene?.unitCell);
   }
 
+  function projectCrystalAxes(cell, rotation) {
+    const m = cell.fracToCart;
+    const norm = Math.hypot(...rotation) || 1;
+    const [qx,qy,qz,qw] = rotation.map(v => v / norm);
+    return [0,1,2].map(i => {
+      const vector = [m[i],m[i+4],m[i+8]];
+      const length = Math.hypot(...vector);
+      const [x,y,z] = vector.map(v => v / length);
+      const tx = 2*(qy*z-qz*y), ty = 2*(qz*x-qx*z), tz = 2*(qx*y-qy*x);
+      return {axis:"abc"[i], x:x+qw*tx+qy*tz-qz*ty, y:y+qw*ty+qz*tx-qx*tz, z:z+qw*tz+qx*ty-qy*tx};
+    });
+  }
+
   function create3DmolRendererAdapter(runtime) {
     const getRuntime = () => runtime || root?.$3Dmol;
     const diagnostics = { activeSessions: 0, activeModels: 0, activeLabels: 0, activeWebglContexts: 0, activeListeners: 0, activeObservers: 0, activeAnimationFrames: 0 };
@@ -5477,6 +5490,35 @@
         const webglContext = viewer.getRenderer?.()?.getContext?.() || null;
         const internalObservers = [viewer.divwatcher, viewer.intwatcher].filter((observer) => observer?.disconnect);
         let cameraListenerActive = false;
+        let axesIndicator = null;
+        function updateAxes() {
+          const document = container.ownerDocument;
+          if (!document?.createElementNS) return;
+          if (!scene?.crystal?.cell || viewState?.crystalDisplay?.showCellAxes !== true) {
+            axesIndicator?.remove(); axesIndicator = null; return;
+          }
+          const make = (tag, attrs) => {
+            const node = document.createElementNS("http://www.w3.org/2000/svg", tag);
+            Object.entries(attrs).forEach(([key,value]) => node.setAttribute(key,String(value)));
+            return node;
+          };
+          if (!axesIndicator) {
+            axesIndicator = make("svg", {class:"crystal-axes-indicator",viewBox:"0 0 120 120",role:"img","aria-label":"Crystal axes a b c"});
+            container.append(axesIndicator);
+          }
+          axesIndicator.replaceChildren();
+          const colors = {a:"#c43c3c",b:"#24834b",c:"#365fc0"};
+          projectCrystalAxes(scene.crystal.cell,readCamera().rotation).sort((a,b)=>a.z-b.z).forEach(axis => {
+            const x=60+38*axis.x, y=60-38*axis.y, color=colors[axis.axis];
+            axesIndicator.append(make("line",{x1:60,y1:60,x2:x,y2:y,stroke:color,"stroke-width":2.5,"data-axis":axis.axis}));
+            const angle=Math.atan2(y-60,x-60);
+            const points=[[x,y],[x-7*Math.cos(angle-.4),y-7*Math.sin(angle-.4)],[x-7*Math.cos(angle+.4),y-7*Math.sin(angle+.4)]];
+            axesIndicator.append(make("polygon",{points:points.map(p=>p.join(",")).join(" "),fill:color}));
+            const label=make("text",{x:60+49*axis.x,y:60-49*axis.y+4,fill:color,"text-anchor":"middle","font-size":14,"font-weight":700});
+            label.textContent=axis.axis;axesIndicator.append(label);
+          });
+          axesIndicator.append(make("circle",{cx:60,cy:60,r:2.5,fill:"#687080"}));
+        }
         diagnostics.activeSessions += 1;
         if (webglContext) diagnostics.activeWebglContexts += 1;
         diagnostics.activeListeners += registrations.length;
@@ -5594,10 +5636,11 @@
           addLabels();
           addUnitCell();
           addMeasurements();
+          updateAxes();
         }
 
         if (typeof viewer.setViewChangeCallback === "function") {
-          viewer.setViewChangeCallback(() => { if (!suppressCameraEvents) callbacks.onCameraChanged(readCamera()); });
+          viewer.setViewChangeCallback(() => { updateAxes(); if (!suppressCameraEvents) callbacks.onCameraChanged(readCamera()); });
           cameraListenerActive = true;
           diagnostics.activeListeners += 1;
         }
@@ -5683,6 +5726,7 @@
             ensureActive(); suppressCameraEvents = true; camera = cloneCamera(nextCamera);
             viewer.setProjection?.(camera.projection);
             if (typeof viewer.setView === "function") viewer.setView([...camera.target, camera.distance, ...camera.rotation]);
+            updateAxes();
             scheduleCameraEvents();
           },
           resetCamera() {
@@ -5700,6 +5744,7 @@
           dispose() {
             if (disposed) return;
             disposed = true;
+            axesIndicator?.remove(); axesIndicator = null;
             viewGeneration += 1;
             const failures = [];
             const attempt = (action) => { try { action(); return true; } catch (cause) { failures.push(cause); return false; } };
@@ -5737,6 +5782,7 @@
   const ThreeDmolRendererAdapter = create3DmolRendererAdapter();
   return {
     ThreeDmolRendererAdapter,
+    projectCrystalAxes,
     create3DmolRendererAdapter,
     build3DmolAtomSpecs: buildAtomSpecs,
     labelTextForAtom,
@@ -8389,7 +8435,7 @@
     "add +c layer": "+cに1セル追加", "add −c layer": "−cに1セル追加", "remove +c layer": "+c側を1セル縮小", "remove −c layer": "−c側を1セル縮小",
     "Open": "開く", "Labels": "原子番号", "Clear selection": "選択解除", "Reset view": "表示リセット",
     "Copy coordinates": "XYZコピー", "Export XYZ": "XYZ保存", "Share": "Web共有", "Open in New Window": "別ウィンドウ",
-    "Show XYZ": "XYZ表示", "Full XYZ": "全XYZ座標", "Ball & stick": "球と棒", "Stick": "棒", "Spacefill": "空間充填",
+    "Show XYZ": "XYZ表示", "Full XYZ": "全XYZ座標", "Ball & stick": "ball & stick", "Stick": "stick", "Spacefill": "spacefill", "Crystal axes": "結晶軸 a/b/c",
     "Viewer settings": "表示と測定", "Display": "表示", "Measurements": "測定", "Crystal": "結晶", "Info / XYZ": "情報・座標",
     "Selected atoms": "選択原子", "No viewers open": "Viewerを開いてください", "Compare Viewers": "比較表示", "Duplicate Viewer": "Viewerを複製", "New Viewer": "新しいViewer",
     "Open or drop XYZ, MOL, SDF, PDB, CIF, or mmCIF structures.": "XYZ、MOL、SDF、PDB、CIF、mmCIFを開くかドロップしてください。",
@@ -8566,7 +8612,7 @@
     requireCrystalSource(source);
     const modelId = state.modelId || source.models[0]?.modelId;
     if (!source.models.some((model) => model.modelId === modelId)) throw new Error(`Unknown crystal model '${modelId}'.`);
-    const exportMode = state.exportMode || "source-asymmetric-unit";
+    const exportMode = state.exportMode || "visible-scene";
     if (!EXPORT_MODES.has(exportMode)) throw new TypeError(`Unsupported crystal export mode '${exportMode}'.`);
     const crystal = {
       content: state.content || "unit-cell",
@@ -8588,6 +8634,7 @@
       definition: dependencies.normalizeSceneDefinition({ modelId, mode: "crystal", crystal }),
       exportMode,
       showUnitCell: state.showUnitCell !== false,
+      showCellAxes: state.showCellAxes !== false,
     });
   }
 
@@ -8750,7 +8797,10 @@
     const hideMolecule = createElement(document, "button", { type: "button", className: "outlined-action" }, "Hide molecule");
     const showAll = createElement(document, "button", { type: "button", className: "outlined-action" }, "Show all");
     hideMolecule.disabled = options.canHideSelected !== true;
-    display.append(unitCellLabel, hideMolecule, showAll);
+    const axes = createElement(document,"input",{type:"checkbox","aria-label":"Crystal axes"});
+    const axesLabel = createElement(document,"label",{className:"crystal-toggle"});
+    axesLabel.append(axes,createElement(document,"span",{},"Crystal axes"));
+    display.append(unitCellLabel, axesLabel, hideMolecule, showAll);
 
     const information = createElement(document, "details", { className: "crystal-information", open: "" });
     information.append(createElement(document,"summary",{"data-viewer-text":"Crystal information"},"Crystal information"));
@@ -8789,6 +8839,7 @@
       radius.value = String(normalized.definition.crystal.packingRadiusAngstrom ?? 8);
       exportMode.value = normalized.exportMode;
       unitCell.checked = normalized.showUnitCell;
+      axes.checked = normalized.showCellAxes;
       ["a", "b", "c"].forEach((axis) => normalized.definition.crystal.replication[axis].forEach((value, index) => { rangeInputs[axis][index].value = String(value); }));
       const visibility = crystalControlVisibility(normalized);
       packingModeField.hidden = !visibility.packing;
@@ -8811,7 +8862,7 @@
 
     function notify(event) {
       if (disposed) return;
-      if (event?.target === unitCell) return;
+      if (event?.target === unitCell || event?.target === axes) return;
       try {
         if (event?.target === content && ["unit-cell","supercell","packing"].includes(content.value)) {
           state.wrapFractionalCoordinates=true;
@@ -8832,6 +8883,10 @@
       }
     }
     panel.addEventListener("change", notify);
+    axes.addEventListener("change", () => {
+      state = {...state,showCellAxes:axes.checked};
+      options.onAxesChange?.(axes.checked);
+    });
     unitCell.addEventListener("change", () => {
       state = { ...state, showUnitCell: unitCell.checked };
       options.onUnitCellChange?.(unitCell.checked);
@@ -8967,7 +9022,7 @@
 
     function crystalPanelState(definition, exportMode, view) {
       return definition?.mode === "crystal"
-        ? { modelId: definition.modelId, ...definition.crystal, exportMode, showUnitCell: view?.crystalDisplay?.showUnitCell !== false }
+        ? { modelId: definition.modelId, ...definition.crystal, exportMode, showUnitCell: view?.crystalDisplay?.showUnitCell !== false, showCellAxes: view?.crystalDisplay?.showCellAxes !== false }
         : { modelId: definition?.modelId, exportMode };
     }
 
@@ -8978,6 +9033,10 @@
         canHideSelected: Boolean(selectedDerivedComponentId(entry)),
         onChange: (normalized) => applyCrystalPanelChange(entry, normalized),
         onUnitCellChange: (visible) => applyUnitCellVisibility(entry, visible),
+        onAxesChange: async (visible) => {
+          workspace.patchViewer(entry.viewerId,{view:{crystalDisplay:{showCellAxes:visible}}});
+          await entry.instance.updateView();
+        },
         onHideSelected: () => hideSelectedComponent(entry),
         onShowAll: () => showAllComponents(entry),
         onCancel: () => entry.operation?.abort?.(),
@@ -9248,7 +9307,7 @@
       if (!current) return "";
       try {
         if (isCrystal(current.source)) {
-          const mode = current.exportMode || "source-asymmetric-unit";
+          const mode = current.exportMode || "visible-scene";
           const exportOptions = { source: current.source, scene: current.instance.visibleScene, modelId: current.modelId, mode, selectedRenderAtomIds: selectedRenderAtomIds(current) };
           current.fullXyz = dependencies.exportCrystalXyz(exportOptions);
           current.coordinateRows = dependencies.crystalCoordinateRows(exportOptions);
@@ -9425,7 +9484,7 @@
           .catch((error) => setStatus(error?.message || String(error), true));
         await instance.updateScene(scene);
         previousViewerIds.forEach(disposeRuntime);
-        const entry = { viewerId, instance, pane, source, payload, fullXyz, coordinateRows: dependencies.share.coordinateRows(payload), modelId, host, exportMode: "source-asymmetric-unit", operation: null };
+        const entry = { viewerId, instance, pane, source, payload, fullXyz, coordinateRows: dependencies.share.coordinateRows(payload), modelId, host, exportMode: "visible-scene", operation: null };
         runtime.set(viewerId, entry);
         if (isCrystal(source) && elements.crystalPanel) {
           const initialDefinition = workspace.getState().instances[viewerId].sceneDefinition;
@@ -9516,7 +9575,7 @@
         const payload = dependencies.share.createPayload({ xyz: exported, charge: 0, multiplicity: 1 });
         const entry = {
           viewerId, instance, pane, source, payload, modelId, host, operation: null,
-          fullXyz: payloadToFullXyz(payload), coordinateRows: dependencies.share.coordinateRows(payload), exportMode: "source-asymmetric-unit",
+          fullXyz: payloadToFullXyz(payload), coordinateRows: dependencies.share.coordinateRows(payload), exportMode: "visible-scene",
         };
         runtime.set(viewerId, entry);
         if (isCrystal(source) && elements.crystalPanel) {

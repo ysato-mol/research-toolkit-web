@@ -203,3 +203,4 @@ body[data-viewer-host="toolkit"] .sidebar-tabs button[aria-selected="true"] { ba
 .crystal-information { margin-top: 10px; }
 .crystal-information > summary { cursor: pointer; font-size: 14px; font-weight: 650; }
 .crystal-information .crystal-metadata { max-height: 330px; overflow-y: auto; }
+.crystal-axes-indicator { position: absolute; top: 10px; left: 10px; width: 120px; height: 120px; z-index: 3; pointer-events: none; overflow: visible; }
