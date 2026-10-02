@@ -7,11 +7,16 @@
     <link rel="stylesheet" href="app.css?v=__RT_VIEWER_BUILD__">
   </head>
   <body>
-    <main class="viewer-shell">
-      <header class="viewer-header">
-        <p class="product-label">Research Toolkit · Structure Viewer</p>
-        <span id="structureSummary" class="summary"></span>
-      </header>
+    <header class="app-header">
+      <div class="tool-header">
+        <div class="tool-heading">
+          <div class="tool-title-row"><a id="toolkitHome" class="home-hex-button" hidden aria-label="Home"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"></path><path d="M5.5 10.5V20h13v-9.5"></path><path d="M9.5 20v-6h5v6"></path></svg></a><h1>Structure Viewer</h1></div>
+          <nav class="tool-switcher" hidden aria-label="Tool navigation"></nav>
+        </div>
+        <div id="standaloneSettings" class="standalone-settings"><button id="viewerTheme" type="button" aria-label="Switch theme">◐</button><select id="viewerLanguage" aria-label="Language"><option value="ja">日本語</option><option value="en">English</option></select></div>
+      </div>
+    </header>
+    <main class="viewer-shell page-shell">
       <div class="workspace-bar">
         <nav id="workspaceTabs" class="workspace-tabs" role="tablist" aria-label="Open structures"></nav>
         <div class="workspace-actions">
@@ -21,36 +26,55 @@
           <button id="newViewerButton" type="button" class="workspace-action" title="Open an empty Viewer" aria-label="New Viewer">+</button>
         </div>
       </div>
+
+      <div class="viewer-workspace">
+        <section class="panel viewer-panel">
+          <div class="viewer-tool-strip" aria-label="Viewer controls">
+            <button id="openButton" type="button" class="outlined-action secondary">Open</button>
+            <input id="fileInput" type="file" accept=".xyz,.mol,.sdf,.pdb,.ent,.cif,.mmcif,chemical/x-xyz,chemical/x-mdl-molfile,chemical/x-mdl-sdfile,chemical/x-pdb,chemical/x-cif,text/plain" multiple hidden>
+            <label class="style-control"><span class="sr-only">Molecule style</span><select id="styleSelect"><option value="ball-stick">Ball &amp; stick</option><option value="stick">Stick</option><option value="spacefill">Spacefill</option></select></label>
+            <button id="labelsButton" type="button" class="tonal-action" aria-pressed="false">Labels</button>
+            <button id="clearButton" type="button" class="outlined-action secondary">Clear selection</button>
+            <button id="resetButton" type="button" class="outlined-action secondary">Reset view</button>
+            <button id="copyCoordinatesButton" type="button" class="primary-action">Copy coordinates</button>
+            <button id="pngButton" type="button" class="outlined-action secondary">PNG</button>
+            <button id="shareButton" type="button" class="outlined-action secondary">Share</button>
+            <button id="openDetachedButton" type="button" class="outlined-action secondary">Open in New Window</button>
+          </div>
       <section id="viewerStage" class="viewer-stage" aria-label="Molecular structure viewer">
         <div id="viewer" class="viewer"><p>Open or drop XYZ, MOL, SDF, PDB, CIF, or mmCIF structures.</p></div>
-        <output id="measurementOverlay" class="measurement-overlay" aria-live="polite" hidden></output>
         <output id="statusMessage" class="status-message" aria-live="polite" hidden></output>
         <span class="resize-affordance" aria-hidden="true"></span>
       </section>
-      <section id="crystalPanelHost" class="crystal-panel-host" aria-label="Crystal settings" hidden></section>
-      <section class="viewer-controls" aria-label="Viewer controls">
-        <div class="control-section display-controls">
-          <span class="control-heading">Display</span>
-          <label class="model-control" hidden><span class="sr-only">Structure model</span><select id="modelSelect" aria-label="Structure model"></select></label>
-          <label class="style-control"><span class="sr-only">Molecule style</span><select id="styleSelect"><option value="ball-stick">Ball &amp; stick</option><option value="stick">Stick</option><option value="spacefill">Spacefill</option></select></label>
-          <button id="labelsButton" type="button" class="tonal-action" aria-pressed="false">Labels</button>
-        </div>
-        <div class="control-section action-controls">
-          <span class="control-heading">Actions</span>
-          <button id="openButton" type="button" class="outlined-action">Open</button>
-          <input id="fileInput" type="file" accept=".xyz,.mol,.sdf,.pdb,.ent,.cif,.mmcif,chemical/x-xyz,chemical/x-mdl-molfile,chemical/x-mdl-sdfile,chemical/x-pdb,chemical/x-cif,text/plain" multiple hidden>
-          <button id="clearButton" type="button" class="outlined-action">Clear selection</button>
-          <button id="resetButton" type="button" class="outlined-action">Reset view</button>
-          <button id="showXyzButton" type="button" class="outlined-action" aria-expanded="false">Show XYZ</button>
-          <button id="copyCoordinatesButton" type="button" class="primary-action">Copy coordinates</button>
-          <button id="exportXyzButton" type="button" class="outlined-action">Export XYZ</button>
-          <button id="shareButton" type="button" class="outlined-action">Share</button>
-          <button id="pngButton" type="button" class="outlined-action">PNG</button>
-          <button id="openDetachedButton" type="button" class="outlined-action">Open in New Window</button>
-        </div>
-      </section>
-      <p id="lossyNotice" class="lossy-notice" hidden></p>
-      <details id="xyzPanel" class="xyz-panel"><summary>Full XYZ</summary><textarea id="xyzText" readonly spellcheck="false"></textarea></details>
+
+        </section>
+        <aside class="panel viewer-sidebar" aria-label="Display and measurements">
+          <h2 data-viewer-text="Viewer settings">Viewer settings</h2>
+          <div class="sidebar-tabs" role="tablist" aria-label="Viewer settings">
+            <button id="displayTab" role="tab" aria-controls="displayPage" data-sidebar-tab="display" aria-selected="true" data-viewer-text="Display">Display</button>
+            <button id="measureTab" role="tab" aria-controls="measurePage" data-sidebar-tab="measure" aria-selected="false" data-viewer-text="Measurements" tabindex="-1">Measurements</button>
+            <button id="crystalTab" role="tab" aria-controls="crystalPage" data-sidebar-tab="crystal" aria-selected="false" data-viewer-text="Crystal" tabindex="-1" hidden>Crystal</button>
+            <button id="infoTab" role="tab" aria-controls="infoPage" data-sidebar-tab="info" aria-selected="false" data-viewer-text="Info / XYZ" tabindex="-1">Info / XYZ</button>
+          </div>
+          <section id="displayPage" role="tabpanel" aria-labelledby="displayTab" data-sidebar-page="display">
+            <p class="sidebar-help" data-viewer-text="Rotate by dragging; scroll to zoom. Click atoms to select and measure.">Rotate by dragging; scroll to zoom. Click atoms to select and measure.</p>
+            <label class="model-control" hidden><span class="sr-only">Structure model</span><select id="modelSelect" aria-label="Structure model"></select></label>
+            <p class="sidebar-help" data-viewer-text="Display style and atom numbers are available in the top toolbar.">Display style and atom numbers are available in the top toolbar.</p>
+          </section>
+          <section id="measurePage" role="tabpanel" aria-labelledby="measureTab" data-sidebar-page="measure" hidden>
+            <h3 data-viewer-text="Selected atoms">Selected atoms</h3><output id="selectionSummary">—</output>
+            <output id="measurementOverlay" class="measurement-overlay" aria-live="polite" hidden></output>
+            <p class="sidebar-help" data-viewer-text="Select 2 atoms for distance, 3 for angle, or 4 for dihedral.">Select 2 atoms for distance, 3 for angle, or 4 for dihedral.</p>
+          </section>
+          <section id="crystalPage" role="tabpanel" aria-labelledby="crystalTab" data-sidebar-page="crystal" hidden><section id="crystalPanelHost" class="crystal-panel-host" aria-label="Crystal settings" hidden></section></section>
+          <section id="infoPage" role="tabpanel" aria-labelledby="infoTab" data-sidebar-page="info" hidden>
+            <output id="structureSummary" class="summary"></output>
+            <div class="coordinate-actions"><button id="showXyzButton" type="button" class="outlined-action secondary" aria-expanded="false">Show XYZ</button><button id="exportXyzButton" type="button" class="outlined-action secondary">Export XYZ</button></div>
+            <p id="lossyNotice" class="lossy-notice" hidden></p>
+            <details id="xyzPanel" class="xyz-panel"><summary data-viewer-text="Full XYZ">Full XYZ</summary><textarea id="xyzText" readonly spellcheck="false"></textarea></details>
+          </section>
+        </aside>
+      </div>
       <p id="errorMessage" class="error-message" role="alert" aria-live="assertive" hidden></p>
     </main>
     <script src="vendor/3Dmol-2.5.3.min.js"></script>

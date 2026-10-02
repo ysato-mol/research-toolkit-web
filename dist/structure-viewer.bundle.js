@@ -8111,6 +8111,169 @@
   };
 });
 ;
+/* web/structure-viewer/ui/workbench.js */
+(function (root, factory) {
+  const api = factory();
+  if (typeof module === "object" && module.exports) module.exports = api;
+  if (root) root.StructureViewerUI = Object.assign(root.StructureViewerUI || {}, api);
+})(typeof window !== "undefined" ? window : globalThis, function () {
+  "use strict";
+
+  const labels = {
+    "Open": "開く", "Labels": "原子番号", "Clear selection": "選択解除", "Reset view": "表示リセット",
+    "Copy coordinates": "XYZコピー", "Export XYZ": "XYZ保存", "Share": "Web共有", "Open in New Window": "別ウィンドウ",
+    "Show XYZ": "XYZ表示", "Full XYZ": "全XYZ座標", "Ball & stick": "球と棒", "Stick": "棒", "Spacefill": "空間充填",
+    "Viewer settings": "表示と測定", "Display": "表示", "Measurements": "測定", "Crystal": "結晶", "Info / XYZ": "情報・座標",
+    "Selected atoms": "選択原子", "No viewers open": "Viewerを開いてください", "Compare Viewers": "比較表示", "Duplicate Viewer": "Viewerを複製", "New Viewer": "新しいViewer",
+    "Open or drop XYZ, MOL, SDF, PDB, CIF, or mmCIF structures.": "XYZ、MOL、SDF、PDB、CIF、mmCIFを開くかドロップしてください。",
+    "Rotate by dragging; scroll to zoom. Click atoms to select and measure.": "ドラッグで回転、スクロールで拡大縮小。原子をクリックして選択・測定できます。",
+    "Display style and atom numbers are available in the top toolbar.": "表示形式と原子番号は上部ツールバーで切り替えられます。",
+    "Select 2 atoms for distance, 3 for angle, or 4 for dihedral.": "2原子で距離、3原子で角度、4原子で二面角を測定できます。",
+    "Crystal scene": "結晶シーン", "Asymmetric unit": "非対称単位", "Unit cell": "単位格子", "Symmetry mates": "対称操作", "Packing": "パッキング", "Supercell": "スーパーセル",
+    "Crystal model": "結晶モデル", "Disorder handling": "ディスオーダー処理", "All disorder": "すべて表示", "Highest occupancy": "最大占有率", "Specified group": "グループ指定",
+    "Minimum occupancy": "最小占有率", "Disorder assembly": "ディスオーダー集合", "Disorder group": "ディスオーダーグループ", "Packing mode": "パッキング方式",
+    "Molecule count": "分子数", "Radius": "半径", "Packing molecule count": "パッキング分子数", "Packing radius in Angstrom": "パッキング半径（Å）",
+    "XYZ export mode": "XYZ出力対象", "Source asymmetric unit": "元の非対称単位", "Visible scene": "表示シーン", "Selected component": "選択分子",
+    "Molecules": "分子数", "Radius (Å)": "半径（Å）", "Scene": "シーン", "Model": "モデル", "Disorder": "ディスオーダー", "Min. occupancy": "最小占有率", "Export": "出力対象", "XYZ export": "XYZ出力",
+    "Symmetry-mate ranges": "対称操作の範囲", "Hide molecule": "分子を非表示", "Show all": "すべて表示", "Cancel": "中止",
+    "Space group": "空間群", "Formula": "組成式", "Temperature": "温度", "Crystal display controls": "結晶表示設定",
+    "Molecule style": "表示形式", "Structure model": "構造モデル", "Open structures": "開いている構造", "Comparison Viewer": "比較するViewer", "Viewer controls": "Viewer操作",
+    "Switch theme": "テーマを切り替え", "Language": "表示言語", "Home": "ホームへ戻る",
+    "Open or drop XYZ, MOL, SDF, PDB, CIF, or mmCIF files.": "XYZ、MOL、SDF、PDB、CIF、mmCIFを開くかドロップしてください。",
+  };
+  function viewerText(text, language) { return language === "ja" ? labels[text] || text : text; }
+
+  function toolkitRoot(href) {
+    const url = new URL(href);
+    // The bundled route is explicit: file:// alone also covers standalone copies.
+    return /\/web\/structure-viewer\/index\.html$/.test(url.pathname) ? new URL("../../", url).href : null;
+  }
+
+  async function connectToolkit(windowObject) {
+    const base = toolkitRoot(windowObject.location.href);
+    if (!base) return false;
+    const document = windowObject.document;
+    const home = document.getElementById("toolkitHome");
+    const navigation = document.querySelector(".tool-switcher");
+    home.href = new URL("Research_Toolkit.html", base).href;
+    home.hidden = false;
+    navigation.hidden = false;
+    const connected = await new Promise((resolve) => {
+      const script = document.createElement("script");
+      script.src = new URL("preferences.js", base).href;
+      script.onload = () => resolve(Boolean(windowObject.ResearchToolkitPreferences));
+      script.onerror = () => { script.remove(); resolve(false); };
+      document.head.append(script);
+    });
+    if (!connected) { home.hidden = true; navigation.hidden = true; return false; }
+    const shared = document.createElement("link");
+    shared.rel = "stylesheet";
+    shared.href = new URL("css/shared.css", base).href;
+    document.head.insertBefore(shared, document.head.querySelector('link[href^="app.css"]'));
+    document.getElementById("standaloneSettings").hidden = true;
+    document.body.dataset.viewerHost = "toolkit";
+    return true;
+  }
+
+  function createViewerWorkbench({ window: windowObject, controller, preferences = {} }) {
+    const document = windowObject.document;
+    let language = preferences.language === "ja" ? "ja" : "en";
+    let selectedPage = "display";
+    const tabs = Array.from(document.querySelectorAll("[data-sidebar-tab]"));
+    const pages = Array.from(document.querySelectorAll("[data-sidebar-page]"));
+    const crystalHost = document.getElementById("crystalPanelHost");
+    const crystalTab = document.getElementById("crystalTab");
+    const controls = ["openButton", "labelsButton", "clearButton", "resetButton", "copyCoordinatesButton", "exportXyzButton", "shareButton", "openDetachedButton", "showXyzButton"];
+    controls.forEach((id) => { const node = document.getElementById(id); node.dataset.viewerText = node.textContent; });
+    document.querySelectorAll('#styleSelect option, #viewer > p, .sr-only').forEach((node) => { node.dataset.viewerText = node.textContent; });
+    document.querySelectorAll('[aria-label], [title]').forEach((node) => {
+      for (const attr of ["aria-label", "title"]) {
+        const text = node.getAttribute(attr);
+        if (labels[text]) node.setAttribute(`data-viewer-${attr}`, text);
+      }
+    });
+
+    function selectPage(name) {
+      if (name === "crystal" && crystalHost.hidden) name = "display";
+      selectedPage = name;
+      tabs.forEach((tab) => { const active = tab.dataset.sidebarTab === name; tab.setAttribute("aria-selected", String(active)); tab.tabIndex = active ? 0 : -1; });
+      pages.forEach((page) => { page.hidden = page.dataset.sidebarPage !== name; });
+    }
+    tabs.forEach((tab) => {
+      tab.addEventListener("click", () => selectPage(tab.dataset.sidebarTab));
+      tab.addEventListener("keydown", (event) => {
+        if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+        event.preventDefault();
+        const visible = tabs.filter((node) => !node.hidden);
+        const index = visible.indexOf(tab);
+        const next = event.key === "Home" ? 0 : event.key === "End" ? visible.length - 1 : (index + (event.key === "ArrowRight" ? 1 : -1) + visible.length) % visible.length;
+        selectPage(visible[next].dataset.sidebarTab); visible[next].focus();
+      });
+    });
+    document.getElementById("showXyzButton").addEventListener("click", () => selectPage("info"));
+
+    function translate() {
+      document.querySelectorAll("[data-viewer-text]").forEach((node) => {
+        const text = viewerText(node.dataset.viewerText, language);
+        if (node.textContent !== text) node.textContent = text;
+      });
+      for (const attr of ["aria-label", "title"]) document.querySelectorAll(`[data-viewer-${attr}]`).forEach((node) => {
+        const value = viewerText(node.getAttribute(`data-viewer-${attr}`), language);
+        if (node.getAttribute(attr) !== value) node.setAttribute(attr, value);
+      });
+      document.querySelectorAll('[data-viewer-export-summary]').forEach((node) => {
+        let text = node.getAttribute('data-viewer-export-summary');
+        if (language === 'ja') {
+          for (const key of ['Source asymmetric unit', 'Visible scene', 'Selected component']) {
+            if (text.startsWith(key)) { text = viewerText(key, language) + text.slice(key.length); break; }
+          }
+          text = text.replace(/ (atoms|atom)$/, ' 原子');
+        }
+        if (node.textContent !== text) node.textContent = text;
+      });
+      const empty = document.querySelector(".workspace-tabs-empty");
+      if (empty && empty.textContent !== viewerText("No viewers open", language)) empty.textContent = viewerText("No viewers open", language);
+    }
+    function reflect() {
+      crystalTab.hidden = crystalHost.hidden;
+      if (selectedPage === "crystal" && crystalHost.hidden) selectPage("display");
+      translate();
+    }
+    async function applyPreferences(next) {
+      preferences = { ...preferences, ...next };
+      language = preferences.language === "ja" ? "ja" : "en";
+      document.documentElement.lang = language;
+      document.documentElement.dataset.theme = preferences.theme === "dark" ? "dark" : "light";
+      document.getElementById("viewerLanguage").value = language;
+      await controller.setPreferences(preferences);
+      reflect();
+    }
+    function save(next) {
+      if (windowObject.ResearchToolkitPreferences) windowObject.ResearchToolkitPreferences.writePartial(next);
+      else {
+        const theme = next.theme || preferences.theme;
+        const background = preferences.viewerBackground;
+        const viewerBackground = !background || ["#ffffff", "#222222"].includes(background) ? (theme === "dark" ? "#222222" : "#ffffff") : background;
+        const value = { ...preferences, ...next, viewerBackground };
+        try { windowObject.localStorage.setItem("researchToolkit.preferences.v1", JSON.stringify(value)); } catch (_error) {}
+        applyPreferences(value);
+      }
+    }
+    document.getElementById("viewerLanguage").addEventListener("change", (event) => save({ language: event.target.value }));
+    document.getElementById("viewerTheme").addEventListener("click", () => save({ theme: preferences.theme === "dark" ? "light" : "dark" }));
+    const onPreferences = (event) => applyPreferences(event.detail).catch((error) => { document.getElementById("errorMessage").textContent = error.message; document.getElementById("errorMessage").hidden = false; });
+    windowObject.addEventListener("research-toolkit-preferences", onPreferences);
+    const unsubscribe = controller.workspace.subscribe(reflect);
+    const observer = new windowObject.MutationObserver(reflect);
+    observer.observe(crystalHost, { childList: true, subtree: true, attributes: true, attributeFilter: ["hidden"] });
+    observer.observe(document.getElementById("workspaceTabs"), { childList: true, subtree: true });
+    reflect();
+    document.getElementById("viewerLanguage").value = language;
+    return { applyPreferences, dispose() { observer.disconnect(); unsubscribe(); windowObject.removeEventListener("research-toolkit-preferences", onPreferences); } };
+  }
+  return { toolkitRoot, viewerText, connectToolkit, createViewerWorkbench };
+});
+;
 /* web/structure-viewer/ui/crystal-panel.js */
 (function (root, factory) {
   const dependencies = typeof module === "object" && module.exports
@@ -8205,7 +8368,11 @@
       if (name === "className") element.className = value;
       else element.setAttribute(name, String(value));
     });
-    if (text) element.textContent = text;
+    if (text) {
+      element.textContent = text;
+      if (["span", "legend", "button", "dt", "option"].includes(tag)) element.setAttribute("data-viewer-text", text);
+    }
+    if (attributes["aria-label"]) element.setAttribute("data-viewer-aria-label", attributes["aria-label"]);
     return element;
   }
 
@@ -8231,7 +8398,11 @@
     const content = createElement(document, "select", { "aria-label": "Crystal scene" });
     [["asymmetric-unit", "Asymmetric unit"], ["unit-cell", "Unit cell"], ["symmetry-mates", "Symmetry mates"], ["packing", "Packing"], ["supercell", "Supercell"]].forEach(([value, label]) => content.append(option(document, value, label)));
     const model = createElement(document, "select", { "aria-label": "Crystal model" });
-    source.models.forEach((entry) => model.append(option(document, entry.modelId, entry.label || entry.modelId)));
+    source.models.forEach((entry) => {
+      const item = option(document, entry.modelId, entry.label || entry.modelId);
+      item.removeAttribute?.("data-viewer-text");
+      model.append(item);
+    });
     const disorder = createElement(document, "select", { "aria-label": "Disorder handling" });
     [["all", "All disorder"], ["highest-occupancy", "Highest occupancy"], ["group", "Specified group"]].forEach(([value, label]) => disorder.append(option(document, value, label)));
     const occupancy = createElement(document, "input", { type: "number", min: "0", max: "1", step: "0.05", "aria-label": "Minimum occupancy" });
@@ -8373,7 +8544,7 @@
         const format = (message) => typeof message === "string" ? message : message?.message || message?.code || String(message || "");
         warnings.textContent = Array.isArray(messages) ? messages.map(format).filter(Boolean).join(" ") : format(messages);
       },
-      setExportSummary: (summary) => { exportSummary.textContent = crystalExportSummary(summary); },
+      setExportSummary: (summary) => { exportSummary.textContent = crystalExportSummary(summary); exportSummary.setAttribute("data-viewer-export-summary", exportSummary.textContent); },
       getExportMode: () => exportMode.value,
       dispose: () => { disposed = true; panel.remove(); },
     });
@@ -8393,6 +8564,7 @@
       ...require("../workspace/workspace-store.js"), ...require("../workspace/viewer-instance.js"),
       ...require("./viewer-pane.js"), ...require("./workspace-tabs.js"), ...require("./crystal-panel.js"),
       ...require("../renderers/3dmol-renderer.js"), ...require("../viewer-math.js"),
+      ...require("../core/visual-policy.js"),
       ...require("../transfer/window-transfer.js"),
       share: require("../share-codec.js"),
     }
@@ -8414,6 +8586,14 @@
     return `${payload.elements.length}\nResearch Toolkit shared structure\n${dependencies.share.coordinateRows(payload)}`;
   }
 
+  function selectedAtomLabels(scene, selection = []) {
+    if (!scene?.atoms) return "—";
+    return selection.map((identity) => {
+      const atom = dependencies.resolveIdentity(scene, identity);
+      return atom ? `${scene.atoms.indexOf(atom) + 1} ${atom.element}` : "";
+    }).filter(Boolean).join(", ") || "—";
+  }
+
   function createStandaloneViewerController(options = {}) {
     const document = options.document || root.document;
     const windowObject = options.window || root;
@@ -8422,15 +8602,19 @@
     const navigator = options.navigator || root.navigator;
     const rendererAdapter = options.rendererAdapter || dependencies.ThreeDmolRendererAdapter;
     const createCrystalPanel = options.createCrystalPanel || dependencies.createCrystalPanel;
-    const workspace = options.workspace || dependencies.createWorkspaceStore({ theme: options.theme, toolkitPreferences: options.toolkitPreferences });
+    const toolkitPreferences = { ...(options.toolkitPreferences || {}) };
+    const workspace = options.workspace || dependencies.createWorkspaceStore({ theme: options.theme, toolkitPreferences });
     const registry = dependencies.createParserRegistry([dependencies.XyzParserAdapter, dependencies.MolParserAdapter, dependencies.SdfParserAdapter, dependencies.PdbParserAdapter, dependencies.CifParserAdapter]);
     const runtime = new Map();
     let tabs = null;
+    let language = options.toolkitPreferences?.language === "ja" ? "ja" : "en";
+    const uiText = (en, ja) => language === "ja" ? ja : en;
 
     const byId = (id) => document?.getElementById(id);
     const elements = options.elements || {
       viewer: byId("viewer"), stage: byId("viewerStage"), summary: byId("structureSummary"),
       status: byId("statusMessage"), measurement: byId("measurementOverlay"), error: byId("errorMessage"),
+      selectionSummary: byId("selectionSummary"),
       model: byId("modelSelect"), style: byId("styleSelect"), labels: byId("labelsButton"), clear: byId("clearButton"), reset: byId("resetButton"),
       showXyz: byId("showXyzButton"), copy: byId("copyCoordinatesButton"), share: byId("shareButton"), png: byId("pngButton"),
       open: byId("openButton"), file: byId("fileInput"), xyzPanel: byId("xyzPanel"), xyz: byId("xyzText"), tabs: byId("workspaceTabs"),
@@ -8544,7 +8728,7 @@
       if (current?.source) {
         refreshExport(current);
         if (elements.xyz) elements.xyz.value = current.fullXyz;
-        if (elements.summary) elements.summary.textContent = `${current.source.models.find((model) => model.modelId === current.modelId)?.atomSites.length || 0} atoms · ${current.source.source.format.toUpperCase()}`;
+        if (elements.summary) elements.summary.textContent = `${current.source.models.find((model) => model.modelId === current.modelId)?.atomSites.length || 0} ${uiText("atoms", "原子")} · ${current.source.source.format.toUpperCase()}`;
         if (elements.model) {
           const options = current.source.models.map((model) => {
             const option = elements.model.ownerDocument.createElement("option");
@@ -8560,7 +8744,7 @@
         current.instance?.resize();
       } else {
         if (elements.xyz) elements.xyz.value = "";
-        if (elements.summary) elements.summary.textContent = "Empty Viewer";
+        if (elements.summary) elements.summary.textContent = uiText("Empty Viewer", "空のViewer");
         if (elements.model?.parentElement) elements.model.parentElement.hidden = true;
       }
       if (elements.style && viewerState?.view) elements.style.value = viewerState.view.representation.kind;
@@ -8606,7 +8790,7 @@
         host.id = `viewer-pane-${viewerId}`;
         host.setAttribute("role", "tabpanel");
         host.setAttribute("aria-labelledby", `workspace-tab-${viewerId}`);
-        host.textContent = "Open or drop a structure into this Viewer.";
+        host.textContent = uiText("Open or drop a structure into this Viewer.", "ファイルを開くか、構造ファイルをドロップしてください。");
         elements.viewer.append?.(host);
       }
       runtime.set(viewerId, { viewerId, host, empty: true, operation: null });
@@ -8690,6 +8874,7 @@
 
     function updateMeasurement() {
       const current = activeRuntime();
+      if (elements.selectionSummary) elements.selectionSummary.textContent = selectedAtomLabels(current?.instance?.visibleScene, workspace.getState().instances[current?.viewerId]?.selection);
       const definition = current && workspace.getState().instances[current.viewerId]?.measurements[0];
       const evaluated = definition && current.instance.visibleScene
         ? dependencies.evaluateMeasurement(current.instance.visibleScene, definition)
@@ -8697,7 +8882,7 @@
       if (!elements.measurement) return;
       elements.measurement.hidden = !evaluated || evaluated.status !== "available";
       if (!elements.measurement.hidden) {
-        const label = definition.kind === "distance" ? "Distance" : definition.kind === "angle" ? "Angle" : "Dihedral";
+        const label = definition.kind === "distance" ? uiText("Distance", "距離") : definition.kind === "angle" ? uiText("Angle", "角度") : uiText("Dihedral", "二面角");
         elements.measurement.textContent = `${label}: ${evaluated.value.toFixed(definition.kind === "distance" ? 3 : 2)}${evaluated.unit === "angstrom" ? " Å" : "°"}`;
       }
     }
@@ -8776,6 +8961,7 @@
 
     function refreshCrystalActions(current) {
       current?.crystalPanel?.setHideAvailable?.(Boolean(selectedDerivedComponentId(current)));
+      if (current && workspace.getState().activeViewerId === current.viewerId) updateMeasurement();
     }
 
     async function applyUnitCellVisibility(current, visible) {
@@ -8804,6 +8990,7 @@
       } catch (error) {
         workspace.patchViewer(current.viewerId, { hiddenComponentIds: viewer.hiddenComponentIds });
         await current.instance.updateScene(current.instance.currentScene);
+        refreshCrystalActions(current);
         setStatus(error?.message || String(error), true);
         return false;
       }
@@ -8821,6 +9008,7 @@
       } catch (error) {
         workspace.patchViewer(current.viewerId, { hiddenComponentIds: viewer.hiddenComponentIds });
         await current.instance.updateScene(current.instance.currentScene);
+        refreshCrystalActions(current);
         setStatus(error?.message || String(error), true);
         return false;
       }
@@ -8868,7 +9056,7 @@
           setStatus(error?.message || String(error), true);
         }
       } finally {
-        if (current.operation === operation) { current.operation = null; current.crystalPanel?.setProgress(""); }
+        if (current.operation === operation) { current.operation = null; current.crystalPanel?.setProgress(""); refreshCrystalActions(current); }
       }
     }
 
@@ -9212,7 +9400,7 @@
         const payload = decoded.payload;
         return loadXyz({ text: payloadToFullXyz(payload), charge: payload.charge ?? 0, multiplicity: payload.multiplicity ?? 1 });
       }
-      setStatus("Open or drop XYZ, MOL, SDF, PDB, CIF, or mmCIF files.");
+      setStatus(uiText("Open or drop XYZ, MOL, SDF, PDB, CIF, or mmCIF files.", "XYZ、MOL、SDF、PDB、CIF、mmCIFを開くかドロップしてください。"));
       return null;
     }
 
@@ -9301,6 +9489,25 @@
       });
     }
 
+    async function setPreferences(preferences = {}) {
+      language = preferences.language === "ja" ? "ja" : "en";
+      const backgroundColor = dependencies.resolveViewerBackground({ theme: preferences.theme, toolkitPreferences: preferences });
+      Object.assign(toolkitPreferences, preferences, { viewerBackground: backgroundColor });
+      const updates = [];
+      runtime.forEach((entry, viewerId) => {
+        if (!entry.instance) return;
+        const state = workspace.getState().instances[viewerId];
+        if (state.view.backgroundColor !== backgroundColor) {
+          workspace.patchViewer(viewerId, { view: { ...state.view, backgroundColor } });
+          // Background/style updates do not move the camera. Reapplying it here
+          // would synthesize a camera change on otherwise untouched Viewers.
+          updates.push(entry.instance.updateView());
+        }
+      });
+      await Promise.all(updates);
+      if (workspace.getState().activeViewerId) activateRuntime(workspace.getState().activeViewerId);
+    }
+
     function dispose() {
       [...transferCleanups].forEach((cleanup) => cleanup());
       tabs?.dispose();
@@ -9308,8 +9515,8 @@
       [...runtime.keys()].forEach(disposeRuntime);
     }
 
-    return Object.freeze({ workspace, initialize, newViewer, closeViewer, duplicateViewer, setComparison, exitComparison, loadXyz, loadStructure, loadDetachedSnapshot, openDetachedViewer, importFiles, selectModel, setDisplay, toggleLabels, copyCoordinates, dispose });
+    return Object.freeze({ workspace, initialize, newViewer, closeViewer, duplicateViewer, setComparison, exitComparison, loadXyz, loadStructure, loadDetachedSnapshot, openDetachedViewer, importFiles, selectModel, setDisplay, toggleLabels, copyCoordinates, setPreferences, dispose });
   }
 
-  return { payloadToFullXyz, createStandaloneViewerController };
+  return { payloadToFullXyz, selectedAtomLabels, createStandaloneViewerController };
 });

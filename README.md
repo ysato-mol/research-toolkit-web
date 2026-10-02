@@ -13,6 +13,12 @@ supercell.
 
 QR generation uses the vendored MIT-licensed `qrcode-generator` 1.4.4 runtime. It is browser-local, with no runtime CDN or external QR service.
 
+The compact toolbar and tabbed right panel match Geometry Editor. The panel
+folds below the canvas on narrow screens; crystal controls appear only for
+crystal sources. Toolkit routes reuse the shared navigation, language, and
+theme settings. Public and standalone copies retain the same workbench with
+self-contained settings and assets.
+
 ## Formats and chemistry policy
 
 Supported formats are XYZ, MOL V2000/V3000, SDF V2000/V3000, PDB, CIF, and

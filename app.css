@@ -25,7 +25,7 @@
 html, body { min-width: 280px; margin: 0; overflow-x: clip; background: var(--color-background); color: var(--color-text); }
 body.is-detached .workspace-bar { display: none; }
 button, select, textarea { font: inherit; letter-spacing: 0; }
-.viewer-shell { width: min(1180px, 100%); max-width: 100%; min-height: 100dvh; margin: 0 auto; padding: 12px; display: grid; align-content: start; gap: 8px; }
+.viewer-shell { width: min(100% - 24px, 1680px); max-width: 100%; margin: 0 auto; padding: 8px 0 16px; display: grid; align-content: start; gap: 10px; }
 .viewer-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 0 2px; }
 .product-label { margin: 0; color: var(--color-primary); font-size: .76rem; font-weight: 750; text-transform: uppercase; }
 .summary { color: var(--color-text-secondary); font-size: .82rem; font-weight: 600; text-align: right; }
@@ -43,7 +43,7 @@ button, select, textarea { font: inherit; letter-spacing: 0; }
 .workspace-tabs-empty { align-self: center; padding: 0 8px; color: var(--color-text-secondary); font-size: 12px; }
 .workspace-action { width: 32px; height: 32px; padding: 0; border: 1px solid var(--color-outline); border-radius: 6px; background: var(--color-surface); color: var(--color-primary); font-size: 18px; line-height: 1; }
 
-.viewer-stage { position: relative; width: 100%; height: clamp(340px, 64dvh, 90dvh); min-height: 340px; max-height: 90dvh; overflow: hidden; resize: vertical; background: var(--color-surface); border: 1px solid var(--color-outline); border-radius: 8px; box-shadow: var(--shadow); }
+.viewer-stage { position: relative; width: 100%; height: clamp(520px, calc(100vh - 250px), 880px); min-height: 320px; max-height: 90dvh; overflow: hidden; resize: vertical; background: var(--color-surface); border: 1px solid var(--color-outline); border-radius: 8px; box-shadow: none; }
 .viewer { position: absolute; inset: 0; }
 .viewer-pane-host { position: absolute; inset: 0; }
 .viewer-pane-host[hidden] { display: none; }
@@ -52,25 +52,25 @@ button, select, textarea { font: inherit; letter-spacing: 0; }
 .viewer.is-split .viewer-pane-host { position: relative; inset: auto; min-width: 0; background: var(--color-surface); }
 .viewer > p { margin: 0; padding: 20px; color: var(--color-text-secondary); }
 .measurement-overlay, .status-message { position: absolute; z-index: 2; max-width: calc(100% - 16px); padding: 4px 7px; border-radius: 4px; box-shadow: 0 1px 6px rgba(15, 23, 42, .14); font-size: .72rem; font-weight: 650; pointer-events: none; }
-.measurement-overlay { left: 12px; bottom: 12px; background: rgba(228, 235, 246, .94); color: var(--color-on-primary-container); }
+.measurement-overlay { position: static; display: block; margin: 10px 0; padding: 12px; border: 1px solid var(--color-outline); background: var(--color-surface-low); color: var(--color-text); font-size: 14px; box-shadow: none; }
 .status-message { right: 12px; top: 12px; background: rgba(249, 251, 255, .96); border: 1px solid var(--color-outline); color: var(--color-text-secondary); }
 .resize-affordance { position: absolute; right: 5px; bottom: 5px; z-index: 3; width: 18px; height: 10px; border-bottom: 2px solid rgba(89, 89, 89, .54); pointer-events: none; }
 
 .viewer-controls { display: flex; flex-wrap: wrap; align-items: end; gap: 10px 18px; padding: 9px; background: var(--color-surface-low); border: 1px solid var(--color-outline); border-radius: 8px; }
 .crystal-panel-host[hidden] { display: none; }
-.crystal-panel { display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, .6fr); gap: 8px 14px; padding: 9px; border: 1px solid var(--color-outline); border-radius: 8px; background: var(--color-surface-low); }
-.crystal-fields { display: grid; grid-template-columns: repeat(3, minmax(120px, 1fr)); gap: 7px; }
+.crystal-panel { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px 14px; padding: 9px; border: 1px solid var(--color-outline); border-radius: 8px; background: var(--color-surface-low); }
+.crystal-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
 .crystal-field { display: grid; gap: 3px; min-width: 0; }
 .crystal-field-label { color: var(--color-text-secondary); font-size: .68rem; font-weight: 750; }
 .crystal-field select, .crystal-field input, .crystal-range input { width: 100%; min-height: 34px; padding: 5px 8px; border: 1px solid var(--color-outline-strong); border-radius: 6px; background: var(--color-surface); color: var(--color-text); }
-.crystal-replication, .crystal-supercell, .crystal-display { grid-column: 1; display: flex; align-items: end; gap: 7px; margin: 0; padding: 6px 8px 8px; border: 1px solid var(--color-outline); border-radius: 6px; }
+.crystal-replication, .crystal-supercell, .crystal-display { grid-column: 1; display: flex; flex-wrap: wrap; align-items: end; gap: 7px; margin: 0; padding: 6px 8px 8px; border: 1px solid var(--color-outline); border-radius: 6px; }
 .crystal-replication legend, .crystal-supercell legend, .crystal-display legend { padding: 0 4px; color: var(--color-text-secondary); font-size: .68rem; font-weight: 750; }
 .crystal-range { display: grid; grid-template-columns: 14px repeat(2, minmax(56px, 1fr)); align-items: center; gap: 4px; }
 .crystal-supercell .crystal-field { width: 64px; }
 .crystal-supercell button, .crystal-display button { min-height: 32px; padding: 4px 9px; white-space: nowrap; }
 .crystal-toggle { display: inline-flex; min-height: 32px; align-items: center; gap: 5px; color: var(--color-text-secondary); font-size: .74rem; font-weight: 700; white-space: nowrap; }
 .crystal-toggle input { width: 16px; height: 16px; margin: 0; }
-.crystal-metadata { grid-column: 2; grid-row: 1 / span 2; display: grid; grid-template-columns: auto minmax(0, 1fr); align-content: start; gap: 3px 8px; margin: 0; padding: 7px; border-radius: 6px; background: var(--color-surface-container); font-size: .74rem; }
+.crystal-metadata { grid-column: 1; grid-row: auto; display: grid; grid-template-columns: auto minmax(0, 1fr); align-content: start; gap: 3px 8px; margin: 0; padding: 7px; border-radius: 6px; background: var(--color-surface-container); font-size: .74rem; }
 .crystal-metadata dt { color: var(--color-text-secondary); font-weight: 750; }
 .crystal-metadata dd { margin: 0; overflow-wrap: anywhere; }
 .crystal-feedback { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; min-height: 0; font-size: .74rem; }
@@ -155,3 +155,41 @@ html[data-theme="dark"] .status-message { background: rgba(34, 34, 34, .96); }
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Workbench dimensions follow Geometry Editor tool.css and the shared design system. */
+body { background: var(--color-surface-container); font-family: "Noto Sans JP", "Yu Gothic UI", "Yu Gothic", "Hiragino Sans", sans-serif; font-size: 13px; line-height: 1.54; }
+html[lang="en"] body { font-family: "Hind", "Segoe UI", Arial, sans-serif; }
+[hidden], .measurement-overlay[hidden] { display: none !important; }
+.app-header { background: #1c3177; color: #fff; }
+html[data-theme="dark"] .app-header { background: #060d2b; }
+.tool-header { width: min(100% - 24px, 1680px); margin: 0 auto; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px 20px; align-items: center; min-height: 72px; padding: 12px 0; }
+.tool-title-row { display: flex; gap: 12px; align-items: center; min-height: 28px; }
+.tool-title-row h1 { margin: 0; font-size: 18px; line-height: 26px; }
+.home-hex-button { display: grid; place-items: center; width: 28px; height: 28px; background: #fff; color: #1c3177; clip-path: polygon(25% 0,75% 0,100% 50%,75% 100%,25% 100%,0 50%); }
+.home-hex-button svg { width: 21px; fill: none; stroke: currentColor; stroke-width: 1.7; }
+.standalone-settings { display: flex; gap: 4px; }
+.standalone-settings button, .standalone-settings select { min-height: 32px; border: 1px solid #7f96c2; border-radius: 6px; color: #1c3177; background: #fff; }
+.viewer-workspace { display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 340px); gap: 10px; align-items: start; }
+.panel { min-width: 0; border: 1px solid var(--color-outline); border-radius: 8px; padding: 12px; background: var(--color-surface); }
+.viewer-tool-strip { display: flex; width: 100%; min-width: 0; align-items: center; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; border: 1px solid var(--color-outline); border-radius: 6px; padding: 3px; background: #f4f7fa; }
+html[data-theme="dark"] .viewer-tool-strip { background: var(--color-surface-container); }
+.viewer-tool-strip button, .viewer-tool-strip select { min-height: 34px; font-size: 12px; line-height: 16px; }
+.viewer-tool-strip .style-control { min-width: 110px; }
+.viewer-sidebar { align-self: stretch; }
+.viewer-sidebar h2 { margin: 0 0 10px; font-size: 13px; color: var(--color-text-secondary); }
+.viewer-sidebar h3 { font-size: 12px; color: var(--color-text-secondary); }
+.sidebar-tabs { display: flex; gap: 3px; border: 1px solid var(--color-outline); border-radius: 6px; padding: 3px; margin-bottom: 18px; background: var(--color-surface-container); }
+.sidebar-tabs button { flex: 1; min-width: 0; min-height: 32px; padding: 5px 4px; background: transparent; color: var(--color-text-secondary); white-space: nowrap; font-size: 12px; }
+.sidebar-tabs button[aria-selected="true"] { background: var(--color-surface); color: var(--color-primary); box-shadow: inset 0 -2px #1c3177; }
+html[data-theme="dark"] .sidebar-tabs button[aria-selected="true"] { color: #e4ebf6; }
+.sidebar-help { color: var(--color-text-secondary); font-size: 12px; }
+.coordinate-actions { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
+.viewer-sidebar .summary { display: block; text-align: left; }
+.viewer-sidebar .crystal-panel { padding: 0; border: 0; background: transparent; }
+.crystal-range { width: 100%; }
+.crystal-display { align-items: center; }
+#selectionSummary { display: block; overflow-wrap: anywhere; }
+body[data-viewer-host="toolkit"] .sidebar-tabs button { background: transparent !important; border-color: transparent !important; color: var(--color-text-secondary) !important; padding: 5px 4px !important; }
+body[data-viewer-host="toolkit"] .sidebar-tabs button[aria-selected="true"] { background: var(--color-surface) !important; color: var(--color-primary) !important; }
+@media (max-width: 980px) { .viewer-workspace { grid-template-columns: minmax(0, 1fr); } .viewer-sidebar { min-height: 0; } }
+@media (max-width: 700px) { .viewer-shell { width: calc(100% - 16px); padding: 8px 0 16px; } .tool-header { width: calc(100% - 16px); } .viewer-tool-strip button { width: auto; } .viewer-tool-strip { gap: 4px; } .panel { padding: 8px; } }
