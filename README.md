@@ -121,6 +121,23 @@ The release gate records tested Chrome and Edge versions in
 `release-manifest.json` for both HTTP and direct `file:` operation. Mouse/touch
 rotation and wheel/pinch zoom are provided by the bundled 3Dmol.js viewer.
 
+## Crystal display controls
+
+Crystal scenes keep two different operations separate:
+
+- **Packing** shows the nearest whole molecular components. Molecule-count
+  mode defaults to 10 components; radius mode remains available as an advanced
+  distance-based alternative.
+- **Supercell** replicates crystallographic cells independently along X, Y,
+  and Z. It defaults to `1 x 1 x 1`, includes a `2 x 2 x 2` preset, and uses
+  per-axis steppers for other sizes.
+
+The unit-cell control draws crystallographic a/b/c vectors, including
+translated frames for a supercell. Molecules can be hidden from the selected
+periodic component and restored without changing source atoms or scientific
+share identity. Crystal display state is stored in share v3 view settings;
+expanded scene atoms are never serialized.
+
 ## Build and acceptance
 
 ```powershell
@@ -159,6 +176,6 @@ recorded acceptance evidence.
   must use the configured public deployment URL.
 - Browser release evidence covers current Windows Chrome and Edge. macOS
   browser acceptance remains environment-dependent.
-- The 300,000-derived-atom limit is enforced, but an exact-boundary positive
-  fixture is still deferred; tested release evidence includes a 27,783-atom
+- The 300,000-derived-atom limit is enforced and covered at 299,999, 300,000,
+  and 300,001 derived atoms; browser evidence also includes a 27,783-atom
   crystal scene.

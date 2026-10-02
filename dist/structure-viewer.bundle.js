@@ -181,6 +181,56 @@
   return { createUnitCell, fractionalToCartesian, cartesianToFractional, perpendicularHeights, cellEdges, validateCell };
 });
 ;
+/* web/structure-viewer/crystal/supercell-size.js */
+(function (root, factory) {
+  const dependencies = typeof module === "object" && module.exports
+    ? require("../core/constants.js")
+    : root.StructureViewerCore;
+  const api = factory(dependencies);
+  if (typeof module === "object" && module.exports) module.exports = api;
+  if (root) root.StructureViewerCrystal = Object.assign(root.StructureViewerCrystal || {}, api);
+})(typeof window !== "undefined" ? window : globalThis, function (dependencies) {
+  "use strict";
+
+  const maximumAxisSize = dependencies.LIMITS.replicationAxisMax + 1;
+
+  function axisSize(value, axis) {
+    if (!Number.isSafeInteger(value) || value < 1 || value > maximumAxisSize) {
+      throw new RangeError(`Supercell ${axis} size must be a positive integer no greater than ${maximumAxisSize}.`);
+    }
+    return value;
+  }
+
+  function replicationFromSize(size) {
+    const x = axisSize(size?.x, "x");
+    const y = axisSize(size?.y, "y");
+    const z = axisSize(size?.z, "z");
+    return Object.freeze({
+      a: Object.freeze([0, x - 1]),
+      b: Object.freeze([0, y - 1]),
+      c: Object.freeze([0, z - 1]),
+    });
+  }
+
+  function sizeForRange(range, axis) {
+    if (!Array.isArray(range) || range.length !== 2 || !range.every(Number.isSafeInteger)
+      || range[0] !== 0 || range[1] < 0 || range[1] > dependencies.LIMITS.replicationAxisMax) {
+      throw new RangeError(`Supercell ${axis} range must be a non-negative inclusive range beginning at zero.`);
+    }
+    return range[1] + 1;
+  }
+
+  function sizeFromReplication(replication) {
+    return Object.freeze({
+      x: sizeForRange(replication?.a, "a"),
+      y: sizeForRange(replication?.b, "b"),
+      z: sizeForRange(replication?.c, "c"),
+    });
+  }
+
+  return { replicationFromSize, sizeFromReplication };
+});
+;
 /* web/structure-viewer/crystal/symmetry.js */
 (function (root, factory) {
   const api = factory();
@@ -719,6 +769,34 @@
     return { ranges, translations };
   }
 
+  function candidateTranslationsForCount(count, componentCount) {
+    const width = Math.ceil(Math.cbrt(count / Math.max(1, componentCount)));
+    const half = Math.min(10, Math.max(1, Math.ceil((width - 1) / 2) + 1));
+    const ranges = [[-half, half], [-half, half], [-half, half]];
+    const cellCount = (half * 2 + 1) ** 3;
+    if (cellCount > core.LIMITS.replicationCandidateCells) throw new core.StructureViewerError("scene-limit-exceeded", "$.crystal.packing", { cellCount, ranges });
+    const translations = [];
+    for (let a = -half; a <= half; a += 1) for (let b = -half; b <= half; b += 1) for (let c = -half; c <= half; c += 1) translations.push([a, b, c]);
+    return { ranges, translations };
+  }
+
+  function minimumGroupDistance(left, right) {
+    return Math.min(...left.atoms.flatMap((leftAtom) => right.atoms.map((rightAtom) => distance(leftAtom.position, rightAtom.position))));
+  }
+
+  function rankPackingComponents(groups, centerComponent) {
+    if (!Array.isArray(groups) || !groups.length || !centerComponent?.componentIdentity || !Array.isArray(centerComponent.atoms) || !centerComponent.atoms.length) {
+      throw new TypeError("Packing component ranking requires groups and a center component.");
+    }
+    return [...groups].sort((left, right) => {
+      const leftCenter = left.componentIdentity === centerComponent.componentIdentity;
+      const rightCenter = right.componentIdentity === centerComponent.componentIdentity;
+      if (leftCenter !== rightCenter) return leftCenter ? -1 : 1;
+      return minimumGroupDistance(left, centerComponent) - minimumGroupDistance(right, centerComponent)
+        || left.componentIdentity.localeCompare(right.componentIdentity);
+    });
+  }
+
   function rotatedTranslation(operation, translation) {
     return [0, 1, 2].map((row) => operation.rotationNumeric[row * 3] * translation[0]
       + operation.rotationNumeric[row * 3 + 1] * translation[1]
@@ -783,6 +861,39 @@
     return bonds;
   }
 
+  function connectedPackingGroups(atoms, bonds, componentBySite) {
+    const atomById = new Map(atoms.map((atom) => [atom.renderAtomId, atom]));
+    const neighbors = new Map(atoms.map((atom) => [atom.renderAtomId, new Set()]));
+    bonds.forEach((bond) => {
+      if (!neighbors.has(bond.beginRenderAtomId) || !neighbors.has(bond.endRenderAtomId)) return;
+      neighbors.get(bond.beginRenderAtomId).add(bond.endRenderAtomId);
+      neighbors.get(bond.endRenderAtomId).add(bond.beginRenderAtomId);
+    });
+    const remaining = new Set(atomById.keys()); const groups = [];
+    while (remaining.size) {
+      const seed = [...remaining].sort()[0]; const queue = [seed]; const groupAtoms = [];
+      remaining.delete(seed);
+      while (queue.length) {
+        const atomId = queue.shift(); groupAtoms.push(atomById.get(atomId));
+        [...neighbors.get(atomId)].sort().forEach((next) => { if (remaining.delete(next)) queue.push(next); });
+      }
+      groupAtoms.sort((left, right) => left.renderAtomId.localeCompare(right.renderAtomId));
+      const representative = groupAtoms[0];
+      const component = componentBySite.get(representative.identity.siteId);
+      const contributor = representative.contributors?.find((entry) => (
+        entry.symmetryOperationId === representative.identity.periodicImage?.symmetryOperationId
+        && sameInt3(entry.effectiveCellTranslation, representative.identity.periodicImage.cellTranslation)
+      )) || representative.contributors?.[0];
+      const componentIdentity = JSON.stringify([
+        component.componentId,
+        contributor?.symmetryOperationId || representative.identity.periodicImage?.symmetryOperationId || "symop:x,y,z",
+        ...(contributor?.requestedCellTranslation || representative.requestedCellTranslation || [0, 0, 0]),
+      ]);
+      groups.push({ componentIdentity, component, atoms: groupAtoms });
+    }
+    return groups.sort((left, right) => left.componentIdentity.localeCompare(right.componentIdentity));
+  }
+
   async function buildPackingScene(source, definition, options = {}) {
     throwIfAborted(options.signal);
     if (!source?.crystal || source.schema !== "rt-source-structure/1") throw new TypeError("Packing requires a crystal SourceStructure.");
@@ -803,7 +914,9 @@
       const middle = centroid(component, source.crystal.cell);
       return Math.max(0, ...component.sites.map((site) => distance(crystal.fractionalToCartesian(source.crystal.cell, site.fractional.frac), middle)));
     }));
-    const candidates = candidateTranslations(source.crystal.cell, radius, maxExtent);
+    const candidates = settings.packingMode === "molecule-count"
+      ? candidateTranslationsForCount(settings.packingMoleculeCount, components.length)
+      : candidateTranslations(source.crystal.cell, radius, maxExtent);
     const projectedAtoms = selected.length * source.crystal.symmetryOperations.length * candidates.translations.length;
     const projectedBonds = model.bonds.length * source.crystal.symmetryOperations.length * candidates.translations.length;
     if (projectedAtoms > core.LIMITS.derivedAtoms || projectedBonds > core.LIMITS.derivedBonds) {
@@ -815,39 +928,47 @@
     });
     const expandedAtoms = expanded.atoms.map((atom) => ({ ...atom, position: [...crystal.fractionalToCartesian(source.crystal.cell, atom.fractionalPosition)] }));
     const componentBySite = new Map(); components.forEach((component) => component.siteIds.forEach((siteId) => componentBySite.set(siteId, component)));
-    const groups = new Map();
-    expandedAtoms.forEach((atom) => atom.contributors.forEach((contributor) => {
-      const component = componentBySite.get(atom.identity.siteId);
-      const key = JSON.stringify([component.componentId, contributor.symmetryOperationId, ...contributor.requestedCellTranslation]);
-      const group = groups.get(key) || { component, atoms: new Map() }; group.atoms.set(atom.renderAtomId, atom); groups.set(key, group);
-    }));
-    const included = new Map(); let actualComponents = 0; let yields = 0;
+    const candidateBonds = buildBonds(expandedAtoms, model.bonds, source.crystal.symmetryOperations);
+    const groupList = connectedPackingGroups(expandedAtoms, candidateBonds, componentBySite);
+    const centerReference = { componentIdentity: "center-reference", atoms: [{ position: centerPoint }] };
+    const matchingCenterGroups = groupList.filter((group) => group.component.componentId === center.componentId);
+    const centerGroup = [...(matchingCenterGroups.length ? matchingCenterGroups : groupList)].sort((left, right) => (
+      minimumGroupDistance(left, centerReference) - minimumGroupDistance(right, centerReference)
+      || left.componentIdentity.localeCompare(right.componentIdentity)
+    ))[0];
+    if (!centerGroup) throw new core.StructureViewerError("scene-limit-exceeded", "$.crystal.packing", { requestedComponents: settings.packingMoleculeCount, availableComponents: 0 });
+    const selectedGroups = settings.packingMode === "molecule-count"
+      ? rankPackingComponents(groupList, centerGroup).slice(0, settings.packingMoleculeCount)
+      : groupList.filter((group) => group.atoms.some((atom) => distance(atom.position, centerPoint) <= radius + 1e-10));
+    if (settings.packingMode === "molecule-count" && selectedGroups.length !== settings.packingMoleculeCount) {
+      throw new core.StructureViewerError("scene-limit-exceeded", "$.crystal.packing", { requestedComponents: settings.packingMoleculeCount, availableComponents: selectedGroups.length, candidateRange: candidates.ranges });
+    }
+    const included = new Map(); let yields = 0;
     const now = options.now || (() => Date.now()); const yieldControl = options.yieldControl || (() => new Promise((resolve) => setTimeout(resolve, 0))); let sliceStart = now();
-    for (const group of groups.values()) {
+    for (const group of selectedGroups) {
       throwIfAborted(options.signal);
-      const atoms = [...group.atoms.values()];
-      if (atoms.some((atom) => distance(atom.position, centerPoint) <= radius + 1e-10)) {
-        if (included.size + atoms.filter((atom) => !included.has(atom.renderAtomId)).length > core.LIMITS.derivedAtoms) {
-          throw new core.StructureViewerError("scene-limit-exceeded", "$.crystal.packing", { projectedAtoms, actualAtoms: included.size, componentId: group.component.componentId });
-        }
-        atoms.forEach((atom) => included.set(atom.renderAtomId, atom)); actualComponents += 1;
+      const newAtomCount = group.atoms.filter((atom) => !included.has(atom.renderAtomId)).length;
+      if (included.size + newAtomCount > core.LIMITS.derivedAtoms) {
+        throw new core.StructureViewerError("scene-limit-exceeded", "$.crystal.packing", { projectedAtoms, actualAtoms: included.size, componentId: group.component.componentId });
       }
+      group.atoms.forEach((atom) => included.set(atom.renderAtomId, atom));
       if (now() - sliceStart >= core.LIMITS.mainThreadSliceMs) { await yieldControl(); yields += 1; throwIfAborted(options.signal); sliceStart = now(); }
     }
     const atoms = [...included.values()].sort((left, right) => left.renderAtomId.localeCompare(right.renderAtomId));
-    const bonds = buildBonds(atoms, model.bonds, source.crystal.symmetryOperations);
+    const includedIds = new Set(atoms.map((atom) => atom.renderAtomId));
+    const bonds = candidateBonds.filter((bond) => includedIds.has(bond.beginRenderAtomId) && includedIds.has(bond.endRenderAtomId));
     if (bonds.length > core.LIMITS.derivedBonds) throw new core.StructureViewerError("scene-limit-exceeded", "$.crystal.packing", { projectedBonds, actualBonds: bonds.length });
     const atomGeneration = {}; atoms.forEach((atom) => { atomGeneration[atom.renderAtomId] = expanded.atomGeneration[atom.renderAtomId]; });
     const scene = {
       schema: "rt-render-scene/1", sceneId: `scene:${source.structureId}:${model.modelId}:packing`, sourceStructureId: source.structureId, sourceModelId: model.modelId,
       atoms, bonds, provenance: { atomGeneration },
-      crystal: { content: "packing", cell: source.crystal.cell, packing: { radiusAngstrom: radius, centerComponentId: center.componentId, center: centerPoint, centerFractional: center.sites.reduce((sum, site) => sum.map((value, index) => value + site.fractional.frac[index]), [0, 0, 0]).map((value) => value / center.sites.length), candidateRange: candidates.ranges, metrics: { projectedComponents: groups.size, actualComponents, projectedAtoms, actualAtoms: atoms.length, projectedBonds, actualBonds: bonds.length, operationCount: source.crystal.symmetryOperations.length, cellCount: candidates.translations.length, yields } } },
+      crystal: { content: "packing", cell: source.crystal.cell, packing: { mode: settings.packingMode, requestedMoleculeCount: settings.packingMoleculeCount, radiusAngstrom: radius, centerComponentId: center.componentId, selectedComponentIdentities: selectedGroups.map((group) => group.componentIdentity), center: centerPoint, centerFractional: center.sites.reduce((sum, site) => sum.map((value, index) => value + site.fractional.frac[index]), [0, 0, 0]).map((value) => value / center.sites.length), candidateRange: candidates.ranges, metrics: { projectedComponents: groupList.length, actualComponents: selectedGroups.length, projectedAtoms, actualAtoms: atoms.length, projectedBonds, actualBonds: bonds.length, operationCount: source.crystal.symmetryOperations.length, cellCount: candidates.translations.length, yields } } },
       warnings: [...source.warnings],
     };
     core.validateRenderScene(scene); return deepFreeze(scene);
   }
 
-  return { buildPackingScene, componentIndex };
+  return { buildPackingScene, componentIndex, rankPackingComponents };
 });
 ;
 /* web/structure-viewer/crystal/scene-builder.js */
@@ -881,6 +1002,33 @@
     return [
       [o, a], [o, b], [o, c], [a, ab], [a, ac], [b, ab], [b, bc], [c, ac], [c, bc], [ab, abc], [ac, abc], [bc, abc],
     ].map(([start, end]) => ({ start, end }));
+  }
+
+  function latticeSegments(cell, translations = [[0, 0, 0]]) {
+    crystal.validateCell(cell);
+    if (!Array.isArray(translations) || !translations.length) throw new TypeError("Lattice translations must be a non-empty array.");
+    const corners = [[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1], [1, 1, 0], [1, 0, 1], [0, 1, 1], [1, 1, 1]];
+    const edgeIndices = [[0, 1], [0, 2], [0, 3], [1, 4], [1, 5], [2, 4], [2, 6], [3, 5], [3, 6], [4, 7], [5, 7], [6, 7]];
+    const seen = new Set();
+    const segments = [];
+    translations.forEach((translation) => {
+      if (!Array.isArray(translation) || translation.length !== 3 || !translation.every(Number.isSafeInteger)) {
+        throw new TypeError("Each lattice translation must contain three safe integers.");
+      }
+      edgeIndices.forEach(([startIndex, endIndex]) => {
+        const startFractional = corners[startIndex].map((value, axis) => value + translation[axis]);
+        const endFractional = corners[endIndex].map((value, axis) => value + translation[axis]);
+        const endpoints = [startFractional, endFractional].sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)));
+        const key = `${JSON.stringify(endpoints[0])}\u0000${JSON.stringify(endpoints[1])}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        segments.push({
+          start: [...crystal.fractionalToCartesian(cell, endpoints[0])],
+          end: [...crystal.fractionalToCartesian(cell, endpoints[1])],
+        });
+      });
+    });
+    return deepFreeze(segments);
   }
 
   function sourceFractional(site, cell) {
@@ -1197,30 +1345,37 @@
     return bonds;
   }
 
-  function crystalScene(source, model, content, projection, bonds) {
+  function crystalScene(source, model, content, projection, bonds, translations = [[0, 0, 0]]) {
     const scene = {
       schema: "rt-render-scene/1", sceneId: `scene:${source.structureId}:${model.modelId}:${content}`,
       sourceStructureId: source.structureId, sourceModelId: model.modelId, atoms: projection.atoms, bonds,
       provenance: { atomGeneration: projection.atomGeneration },
-      crystal: { content, cell: source.crystal.cell, cellEdges: cellEdgeSegments(source.crystal.cell) }, warnings: [...source.warnings],
+      crystal: {
+        content,
+        cell: source.crystal.cell,
+        cellEdges: cellEdgeSegments(source.crystal.cell),
+        latticeTranslations: translations.map((translation) => [...translation]),
+        latticeSegments: latticeSegments(source.crystal.cell, translations),
+      },
+      warnings: [...source.warnings],
     };
     core.validateRenderScene(scene);
     return deepFreeze(scene);
   }
 
-  function finalizeCrystalScene(source, model, content, projection) {
+  function finalizeCrystalScene(source, model, content, projection, translations) {
     const bonds = content === "asymmetric-unit" ? asymmetricBonds(projection.atoms, model.bonds) : periodicBonds(projection.atoms, model.bonds, {
       crossBoundary: content === "supercell", operations: source.crystal.symmetryOperations,
     });
-    return crystalScene(source, model, content, projection, bonds);
+    return crystalScene(source, model, content, projection, bonds, translations);
   }
 
-  async function finalizeCrystalSceneCooperatively(source, model, content, projection, options) {
+  async function finalizeCrystalSceneCooperatively(source, model, content, projection, options, translations) {
     const bonds = await periodicBondsCooperatively(projection.atoms, model.bonds, {
       ...options, crossBoundary: content === "supercell", operations: source.crystal.symmetryOperations,
     });
     throwIfAborted(options.signal);
-    return crystalScene(source, model, content, projection, bonds);
+    return crystalScene(source, model, content, projection, bonds, translations);
   }
 
   function buildCrystalScene(source, definition, options = {}) {
@@ -1238,7 +1393,7 @@
     const projectedAtoms = sites.length * source.crystal.symmetryOperations.length * translations.length;
     if (content !== "asymmetric-unit" && (options.signal || options.yieldControl || projectedAtoms >= 4096)) {
       return expandedAtomsCooperatively(source, model, sites, definition.crystal, translations, options)
-        .then((projection) => { throwIfAborted(options.signal); return finalizeCrystalSceneCooperatively(source, model, content, projection, options); });
+        .then((projection) => { throwIfAborted(options.signal); return finalizeCrystalSceneCooperatively(source, model, content, projection, options, content === "supercell" ? translations : [[0, 0, 0]]); });
     }
     const projection = content === "asymmetric-unit"
       ? asymmetricAtoms(source, model, sites)
@@ -1246,10 +1401,10 @@
         ? unitCellAtoms(source, model, sites, definition.crystal)
         : expandedAtoms(source, model, sites, definition.crystal, translations);
     throwIfAborted(options.signal);
-    return finalizeCrystalScene(source, model, content, projection);
+    return finalizeCrystalScene(source, model, content, projection, content === "supercell" ? translations : [[0, 0, 0]]);
   }
 
-  return { buildCrystalScene, cellEdgeSegments };
+  return { buildCrystalScene, cellEdgeSegments, latticeSegments };
 });
 ;
 /* web/structure-viewer/core/validators.js */
@@ -1834,6 +1989,79 @@
     sha256Hex,
     computeContentIdentity,
   };
+});
+;
+/* web/structure-viewer/core/visual-policy.js */
+(function (root, factory) {
+  const api = factory();
+  if (typeof module === "object" && module.exports) module.exports = api;
+  if (root) root.StructureViewerCore = Object.assign(root.StructureViewerCore || {}, api);
+})(typeof window !== "undefined" ? window : globalThis, function () {
+  "use strict";
+
+  const elementColors = Object.freeze({
+    H: "#ffffff", He: "#d9ffff", Li: "#cc80ff", Be: "#c2ff00", B: "#ffb5b5", C: "#909090", N: "#3050f8", O: "#ff0d0d", F: "#90e050", Ne: "#b3e3f5",
+    Na: "#ab5cf2", Mg: "#8aff00", Al: "#bfa6a6", Si: "#f0c8a0", P: "#ff8000", S: "#ffff30", Cl: "#1ff01f", Ar: "#80d1e3", K: "#8f40d4", Ca: "#3dff00",
+    Sc: "#e6e6e6", Ti: "#bfc2c7", V: "#a6a6ab", Cr: "#8a99c7", Mn: "#9c7ac7", Fe: "#e06633", Co: "#f090a0", Ni: "#50d050", Cu: "#c88033", Zn: "#7d80b0",
+    Ga: "#c28f8f", Ge: "#668f8f", As: "#bd80e3", Se: "#ffa100", Br: "#a62929", Kr: "#5cb8d1", Rb: "#702eb0", Sr: "#00ff00", Y: "#94ffff", Zr: "#94e0e0",
+    Nb: "#73c2c9", Mo: "#54b5b5", Tc: "#3b9e9e", Ru: "#248f8f", Rh: "#0a7d8c", Pd: "#006985", Ag: "#c0c0c0", Cd: "#ffd98f", In: "#a67573", Sn: "#668080",
+    Sb: "#9e63b5", Te: "#d47a00", I: "#940094", Xe: "#429eb0", Cs: "#57178f", Ba: "#00c900", La: "#70d4ff", Ce: "#ffffc7", Pr: "#d9ffc7", Nd: "#c7ffc7",
+    Pm: "#a3ffc7", Sm: "#8fffc7", Eu: "#61ffc7", Gd: "#45ffc7", Tb: "#30ffc7", Dy: "#1fffc7", Ho: "#00ff9c", Er: "#00e675", Tm: "#00d452", Yb: "#00bf38",
+    Lu: "#00ab24", Hf: "#4dc2ff", Ta: "#4da6ff", W: "#2194d6", Re: "#267dab", Os: "#266696", Ir: "#175487", Pt: "#d0d0e0", Au: "#ffd123", Hg: "#b8b8d0",
+    Tl: "#a6544d", Pb: "#575961", Bi: "#9e4fb5", Po: "#ab5c00", At: "#754f45", Rn: "#428296", Fr: "#420066", Ra: "#007d00", Ac: "#70abfa", Th: "#00baff",
+    Pa: "#00a1ff", U: "#008fff", Np: "#0080ff", Pu: "#006bff", Am: "#545cf2", Cm: "#785ce3", Bk: "#8a4fe3", Cf: "#a136d4", Es: "#b31fd4", Fm: "#b31fba",
+    Md: "#b30da6", No: "#bd0d87", Lr: "#c70066", Rf: "#cc0059", Db: "#d1004f", Sg: "#d90045", Bh: "#e00038", Hs: "#e6002e", Mt: "#eb0026", Ds: "#f0001c",
+    Rg: "#f50014", Cn: "#fa000a", Nh: "#d0d0d0", Fl: "#c8c8c8", Mc: "#c0c0c0", Lv: "#b8b8b8", Ts: "#b0b0b0", Og: "#a8a8a8", metal: "#8aa0b8", X: "#64748b",
+  });
+
+  const VISUAL_POLICY = Object.freeze({
+    elementColors,
+    backgrounds: Object.freeze({ light: "#ffffff", dark: "#222222" }),
+    selectionAtomScale: 1,
+    overlay: Object.freeze({
+      atom: Object.freeze({ fontSize: 10, fontColor: "#1a1a1a", backgroundColor: "#ffffff", backgroundOpacity: 0.68 }),
+      selection: Object.freeze({ fontSize: 10, fontColor: "#ffffff", backgroundColor: "#1c3177", backgroundOpacity: 0.86 }),
+      measurement: Object.freeze({ fontSize: 10, fontColor: "#11215b", backgroundColor: "#e4ebf6", backgroundOpacity: 0.88, lineColor: "#1c3177", lineWidth: 1 }),
+      unitCell: Object.freeze({ lineColor: "#64748b", lineWidth: 1 }),
+    }),
+  });
+
+  function normalizedSymbol(symbol) {
+    const text = String(symbol || "").trim();
+    return text ? text[0].toUpperCase() + text.slice(1).toLowerCase() : "X";
+  }
+
+  function elementColor(symbol) {
+    return elementColors[normalizedSymbol(symbol)] || elementColors.X;
+  }
+
+  function concreteColor(value) {
+    return typeof value === "string" && /^(?:#[0-9a-f]{3,8}|rgba?\([^)]*\)|hsla?\([^)]*\)|[a-z]+)$/i.test(value.trim())
+      ? value.trim()
+      : null;
+  }
+
+  function resolveViewerBackground({ theme = "light", toolkitPreferences } = {}) {
+    return concreteColor(toolkitPreferences?.viewerBackground) || VISUAL_POLICY.backgrounds[theme === "dark" ? "dark" : "light"];
+  }
+
+  function colorStyle(representation) {
+    if (representation.colorScheme === "uniform") return { color: representation.uniformColor || elementColors.X };
+    if (representation.colorScheme === "element") return { colorscheme: elementColors };
+    return { colorscheme: representation.colorScheme };
+  }
+
+  function representationStyle(representation) {
+    const color = colorStyle(representation);
+    if (representation.kind === "stick") return { stick: { radius: 0.12, singleBonds: !representation.multipleBonds, ...color } };
+    if (representation.kind === "spacefill") return { sphere: { scale: 1, ...color } };
+    if (representation.kind === "line") return { line: { ...color } };
+    if (representation.kind === "cartoon" || representation.kind === "ribbon") return { cartoon: { style: representation.kind === "ribbon" ? "trace" : "rectangle", ...color } };
+    if (representation.kind === "surface") return { surface: { opacity: representation.surfaceOpacity ?? 0.75, ...color } };
+    return { stick: { radius: 0.12, singleBonds: !representation.multipleBonds, ...color }, sphere: { scale: 0.24, ...color } };
+  }
+
+  return { VISUAL_POLICY, elementColor, resolveViewerBackground, representationStyle };
 });
 ;
 /* web/structure-viewer/core/contracts.js */
@@ -2947,8 +3175,8 @@
 /* web/structure-viewer/parsers/cif-parser.js */
 (function (root, factory) {
   const core = typeof module === "object" && module.exports
-    ? require("../core/constants.js")
-    : root.StructureViewerCore;
+    ? { ...require("../core/constants.js"), ...require("../crystal/unit-cell.js") }
+    : { ...root.StructureViewerCore, ...root.StructureViewerCrystal };
   const defaultBackend = typeof module === "object" && module.exports
     ? require("../vendor/molstar-cif-parser.js")
     : root.MolstarCifBundle;
@@ -3133,19 +3361,6 @@
     return symmetry.parseSymmetryExpression(expression);
   }
 
-  function inverse3(matrix) {
-    const [a, b, c, d, e, f, g, h, i] = matrix;
-    const A = e * i - f * h; const B = f * g - d * i; const C = d * h - e * g;
-    const determinant = a * A + b * B + c * C;
-    if (!Number.isFinite(determinant) || Math.abs(determinant) < 1e-12) throw new Error("CIF unit cell matrix is singular.");
-    return [A, c * h - b * i, b * f - c * e, B, a * i - c * g, c * d - a * f, C, b * g - a * h, a * e - b * d]
-      .map((entry) => entry / determinant);
-  }
-
-  function matrix4(matrix) {
-    return [matrix[0], matrix[1], matrix[2], 0, matrix[3], matrix[4], matrix[5], 0, matrix[6], matrix[7], matrix[8], 0, 0, 0, 0, 1];
-  }
-
   function createCell(block, required = true) {
     const cellFields = [
       values(block, ["cell_length_a", "cell.length_a"]), values(block, ["cell_length_b", "cell.length_b"]), values(block, ["cell_length_c", "cell.length_c"]),
@@ -3158,13 +3373,7 @@
     if (![a, b, c, alphaDeg, betaDeg, gammaDeg].every(Number.isFinite) || a <= 0 || b <= 0 || c <= 0) {
       throw new Error("CIF unit-cell lengths and angles are required and must be valid.");
     }
-    const radians = Math.PI / 180;
-    const ca = Math.cos(alphaDeg * radians); const cb = Math.cos(betaDeg * radians); const cg = Math.cos(gammaDeg * radians);
-    const sg = Math.sin(gammaDeg * radians);
-    const volumeFactor = Math.sqrt(Math.max(0, 1 - ca * ca - cb * cb - cg * cg + 2 * ca * cb * cg));
-    if (Math.abs(sg) < 1e-12 || volumeFactor <= 0) throw new Error("CIF unit-cell angles form an invalid cell.");
-    const fracToCart3 = [a, b * cg, c * cb, 0, b * sg, c * (ca - cb * cg) / sg, 0, 0, c * volumeFactor / sg];
-    return { a, b, c, alphaDeg, betaDeg, gammaDeg, volume: a * b * c * volumeFactor, fracToCart: matrix4(fracToCart3), cartToFrac: matrix4(inverse3(fracToCart3)) };
+    return core.createUnitCell(a, b, c, alphaDeg, betaDeg, gammaDeg);
   }
 
   function fractionalToCartesian(cell, fractional) {
@@ -3614,6 +3823,54 @@
     return JSON.stringify(identityTuple(value));
   }
 
+  function int3(value, field) {
+    if (!Array.isArray(value) || value.length !== 3 || !value.every(Number.isSafeInteger)) throw new TypeError(`${field} must contain three safe integers.`);
+    return Object.freeze([...value]);
+  }
+
+  function makeDerivedComponentIdentity(value) {
+    const input = value?.derivedComponentIdentity || value;
+    if (!input || typeof input !== "object") throw new TypeError("DerivedComponentIdentity must be an object.");
+    const identity = {
+      modelId: requiredString(input.modelId, "modelId"),
+      sourceComponentId: requiredString(input.sourceComponentId, "sourceComponentId"),
+      symmetryOperationId: requiredString(input.symmetryOperationId, "symmetryOperationId"),
+      requestedCellTranslation: int3(input.requestedCellTranslation, "requestedCellTranslation"),
+      effectiveCellTranslation: int3(input.effectiveCellTranslation, "effectiveCellTranslation"),
+    };
+    if (input.disorderKey !== undefined) identity.disorderKey = requiredString(input.disorderKey, "disorderKey");
+    return Object.freeze(identity);
+  }
+
+  function derivedComponentTuple(value) {
+    const identity = makeDerivedComponentIdentity(value);
+    return [
+      identity.modelId,
+      identity.sourceComponentId,
+      identity.symmetryOperationId,
+      ...identity.requestedCellTranslation,
+      ...identity.effectiveCellTranslation,
+      identity.disorderKey ?? null,
+    ];
+  }
+
+  function serializeDerivedComponentIdentity(value) {
+    return JSON.stringify(derivedComponentTuple(value));
+  }
+
+  function parseDerivedComponentIdentity(serialized) {
+    let tuple;
+    try { tuple = JSON.parse(serialized); } catch (_error) { throw new TypeError("Hidden component identity is invalid."); }
+    if (!Array.isArray(tuple) || tuple.length !== 10) throw new TypeError("Hidden component identity is invalid.");
+    const identity = makeDerivedComponentIdentity({
+      modelId: tuple[0], sourceComponentId: tuple[1], symmetryOperationId: tuple[2],
+      requestedCellTranslation: tuple.slice(3, 6), effectiveCellTranslation: tuple.slice(6, 9),
+      ...(tuple[9] === null ? {} : { disorderKey: tuple[9] }),
+    });
+    if (serializeDerivedComponentIdentity(identity) !== serialized) throw new TypeError("Hidden component identity is not canonical.");
+    return identity;
+  }
+
   function compareTupleValue(left, right) {
     if (left === right) return 0;
     if (left === null) return -1;
@@ -3637,7 +3894,92 @@
     return scene.atoms.find((atom) => atom?.identity && serializeAtomIdentity(atom.identity) === key) || null;
   }
 
-  return { makeAtomIdentity, serializeAtomIdentity, compareAtomIdentity, resolveIdentity };
+  return { makeAtomIdentity, serializeAtomIdentity, compareAtomIdentity, resolveIdentity, makeDerivedComponentIdentity, serializeDerivedComponentIdentity, parseDerivedComponentIdentity };
+});
+;
+/* web/structure-viewer/crystal/component-visibility.js */
+(function (root, factory) {
+  const dependencies = typeof module === "object" && module.exports
+    ? { ...require("../core/atom-identity.js"), ...require("../core/validators.js") }
+    : root.StructureViewerCore;
+  const api = factory(dependencies);
+  if (typeof module === "object" && module.exports) module.exports = api;
+  if (root) root.StructureViewerCrystal = Object.assign(root.StructureViewerCrystal || {}, api);
+})(typeof window !== "undefined" ? window : globalThis, function (dependencies) {
+  "use strict";
+
+  function deepFreeze(value, seen = new WeakSet()) {
+    if (!value || typeof value !== "object" || seen.has(value)) return value;
+    seen.add(value); Object.values(value).forEach((entry) => deepFreeze(entry, seen)); return Object.freeze(value);
+  }
+
+  function connectedComponents(scene) {
+    const atoms = new Map(scene.atoms.map((atom) => [atom.renderAtomId, atom]));
+    const neighbors = new Map(scene.atoms.map((atom) => [atom.renderAtomId, new Set()]));
+    scene.bonds.forEach((bond) => {
+      if (!neighbors.has(bond.beginRenderAtomId) || !neighbors.has(bond.endRenderAtomId)) return;
+      neighbors.get(bond.beginRenderAtomId).add(bond.endRenderAtomId);
+      neighbors.get(bond.endRenderAtomId).add(bond.beginRenderAtomId);
+    });
+    const remaining = new Set(atoms.keys()); const components = [];
+    while (remaining.size) {
+      const seed = [...remaining].sort()[0]; const queue = [seed]; const component = [];
+      remaining.delete(seed);
+      while (queue.length) {
+        const id = queue.shift(); component.push(atoms.get(id));
+        [...neighbors.get(id)].sort().forEach((next) => { if (remaining.delete(next)) queue.push(next); });
+      }
+      components.push(component);
+    }
+    return components;
+  }
+
+  function componentIdentity(component, modelId) {
+    const representative = [...component].sort((left, right) => dependencies.serializeAtomIdentity(left.identity).localeCompare(dependencies.serializeAtomIdentity(right.identity)))[0];
+    const sourceComponentId = `component:${component.map((atom) => atom.identity.siteId).sort()[0]}`;
+    const contributor = representative.contributors?.find((entry) => (
+      entry.symmetryOperationId === representative.identity.periodicImage?.symmetryOperationId
+      && entry.effectiveCellTranslation?.every((value, index) => value === representative.identity.periodicImage.cellTranslation[index])
+    )) || representative.contributors?.[0];
+    return dependencies.makeDerivedComponentIdentity({
+      modelId,
+      sourceComponentId,
+      symmetryOperationId: representative.identity.periodicImage?.symmetryOperationId || contributor?.symmetryOperationId || "symop:x,y,z",
+      requestedCellTranslation: representative.requestedCellTranslation || contributor?.requestedCellTranslation || [0, 0, 0],
+      effectiveCellTranslation: representative.effectiveCellTranslation || contributor?.effectiveCellTranslation || representative.identity.periodicImage?.cellTranslation || [0, 0, 0],
+      ...(representative.identity.disorderKey ? { disorderKey: representative.identity.disorderKey } : {}),
+    });
+  }
+
+  function projectVisibleScene(scene, hiddenComponentIds = []) {
+    dependencies.validateRenderScene(scene);
+    if (!Array.isArray(hiddenComponentIds)) throw new TypeError("hiddenComponentIds must be an array.");
+    const hidden = new Set(hiddenComponentIds.map((value) => {
+      if (typeof value !== "string") throw new TypeError("Hidden component identity must be a string.");
+      return dependencies.serializeDerivedComponentIdentity(dependencies.parseDerivedComponentIdentity(value));
+    }));
+    const identityByAtom = new Map();
+    connectedComponents(scene).forEach((component) => {
+      const identity = componentIdentity(component, scene.sourceModelId);
+      component.forEach((atom) => identityByAtom.set(atom.renderAtomId, identity));
+    });
+    const atoms = scene.atoms
+      .filter((atom) => !hidden.has(dependencies.serializeDerivedComponentIdentity(identityByAtom.get(atom.renderAtomId))))
+      .map((atom) => ({ ...atom, derivedComponentIdentity: identityByAtom.get(atom.renderAtomId) }));
+    const visibleIds = new Set(atoms.map((atom) => atom.renderAtomId));
+    const bonds = scene.bonds.filter((bond) => visibleIds.has(bond.beginRenderAtomId) && visibleIds.has(bond.endRenderAtomId));
+    const atomGeneration = {};
+    atoms.forEach((atom) => { atomGeneration[atom.renderAtomId] = scene.provenance.atomGeneration[atom.renderAtomId]; });
+    const projected = { ...scene, atoms, bonds, provenance: { ...scene.provenance, atomGeneration } };
+    dependencies.validateRenderScene(projected);
+    return deepFreeze(projected);
+  }
+
+  return {
+    makeDerivedComponentIdentity: dependencies.makeDerivedComponentIdentity,
+    serializeDerivedComponentIdentity: dependencies.serializeDerivedComponentIdentity,
+    projectVisibleScene,
+  };
 });
 ;
 /* web/structure-viewer/core/scene-definition.js */
@@ -3655,6 +3997,8 @@
   const CRYSTAL_CONTENT = new Set(["asymmetric-unit", "unit-cell", "symmetry-mates", "packing", "supercell"]);
   const DISORDER_MODES = new Set(["all", "highest-occupancy", "group"]);
   const HYDROGEN_FILTERS = new Set(["all", "hide", "polar-only"]);
+  const PACKING_MODES = new Set(["molecule-count", "radius"]);
+  const PACKING_FIELDS = Object.freeze(["packingMode", "packingMoleculeCount", "packingRadiusAngstrom"]);
 
   function requiredString(value, path) {
     if (typeof value !== "string" || !value.trim()) throw new TypeError(`${path} must be a non-empty string.`);
@@ -3707,14 +4051,22 @@
       disorderMode,
       minimumOccupancy,
     };
-    if (settings.packingRadiusAngstrom !== undefined && content !== "packing") {
-      throw new TypeError("crystal.packingRadiusAngstrom is valid only for packing content.");
-    }
+    if (content !== "packing") PACKING_FIELDS.forEach((field) => {
+      if (Object.prototype.hasOwnProperty.call(settings, field)) throw new TypeError(`crystal.${field} is valid only for packing content.`);
+    });
     if (content === "packing") {
+      const packingMode = settings.packingMode ?? "molecule-count";
+      const packingMoleculeCount = settings.packingMoleculeCount ?? 10;
       const packingRadiusAngstrom = settings.packingRadiusAngstrom ?? 8;
+      if (!PACKING_MODES.has(packingMode)) throw new TypeError("crystal.packingMode is invalid.");
+      if (!Number.isSafeInteger(packingMoleculeCount) || packingMoleculeCount < 1 || packingMoleculeCount > dependencies.LIMITS.derivedAtoms) {
+        throw new RangeError(`crystal.packingMoleculeCount must be a positive integer no greater than ${dependencies.LIMITS.derivedAtoms}.`);
+      }
       if (!Number.isFinite(packingRadiusAngstrom) || packingRadiusAngstrom < 3 || packingRadiusAngstrom > 30) {
         throw new RangeError("crystal.packingRadiusAngstrom must be between 3 and 30 Angstrom.");
       }
+      normalized.packingMode = packingMode;
+      normalized.packingMoleculeCount = packingMoleculeCount;
       normalized.packingRadiusAngstrom = packingRadiusAngstrom;
     }
     if (disorderMode === "group") {
@@ -4241,7 +4593,7 @@
 /* web/structure-viewer/workspace/workspace-store.js */
 (function (root, factory) {
   const dependencies = typeof module === "object" && module.exports
-    ? { ...require("../core/structure-factory.js"), ...require("../core/scene-definition.js"), ...require("../core/atom-identity.js") }
+    ? { ...require("../core/structure-factory.js"), ...require("../core/scene-definition.js"), ...require("../core/atom-identity.js"), ...require("../core/visual-policy.js") }
     : root.StructureViewerCore;
   const api = factory(root, dependencies);
   if (typeof module === "object" && module.exports) module.exports = api;
@@ -4272,12 +4624,12 @@
     throw new Error("A UUID generator is required in this environment.");
   }
 
-  function defaultView() {
+  function defaultView(visualOptions) {
     return {
       representation: { kind: "ball-stick", colorScheme: "element", multipleBonds: true },
       labels: { mode: "none", showSelectionOrder: true },
       hydrogenDisplay: "show",
-      backgroundColor: "var(--rt-viewer-background)",
+      backgroundColor: dependencies.resolveViewerBackground(visualOptions),
       crystalDisplay: { showUnitCell: true, showCellAxes: false },
     };
   }
@@ -4367,6 +4719,16 @@
     });
   }
 
+  function validateHiddenComponentIds(values) {
+    if (!Array.isArray(values)) throw new TypeError("hiddenComponentIds must be an array.");
+    const normalized = values.map((value) => {
+      if (typeof value !== "string") throw new TypeError("Hidden component identity must be a string.");
+      return dependencies.serializeDerivedComponentIdentity(dependencies.parseDerivedComponentIdentity(value));
+    });
+    if (new Set(normalized).size !== normalized.length) throw new TypeError("hiddenComponentIds must not contain duplicates.");
+    return normalized;
+  }
+
   function defaultDefinitionFor(source) {
     if (!source) return undefined;
     return {
@@ -4386,7 +4748,7 @@
     });
   }
 
-  function createWorkspaceStore({ uuid = defaultUuid } = {}) {
+  function createWorkspaceStore({ uuid = defaultUuid, theme = "light", toolkitPreferences } = {}) {
     const registry = new dependencies.SourceRegistry();
     const listeners = new Set();
     let state = initialState();
@@ -4423,11 +4785,12 @@
       const source = structureId ? registry.get(structureId) : null;
       if (structureId && !source) throw new Error(`Unknown structure: ${structureId}`);
       const sceneDefinition = validateSceneDefinition(options.sceneDefinition || defaultDefinitionFor(source), source);
-      const view = mergeView(defaultView(), options.view);
+      const view = mergeView(defaultView({ theme, toolkitPreferences }), options.view);
       validateView(view);
       if (options.camera) validateCamera(options.camera);
       const selection = (options.selection || []).map((identity, index) => validateIdentity(identity, source, `Selection ${index}`));
       const measurements = validateMeasurements(options.measurements || [], source);
+      const hiddenComponentIds = validateHiddenComponentIds(options.hiddenComponentIds || []);
       const viewer = {
         schema: "rt-viewer-instance/1",
         viewerId,
@@ -4438,6 +4801,7 @@
         ...(options.camera ? { camera: clone(options.camera) } : {}),
         selection,
         measurements,
+        hiddenComponentIds,
         uiState: clone(options.uiState || {}),
         operation: clone(options.operation || { status: "idle" }),
         ...(options.error ? { error: clone(options.error) } : {}),
@@ -4470,6 +4834,8 @@
       const selection = selectionInput.map((identity, index) => validateIdentity(identity, source, `Selection ${index}`));
       const measurementInput = patch.measurements || (retargeting ? [] : current.measurements);
       const measurements = validateMeasurements(measurementInput, source);
+      const hiddenInput = Object.prototype.hasOwnProperty.call(patch, "hiddenComponentIds") ? patch.hiddenComponentIds : (retargeting ? [] : current.hiddenComponentIds);
+      const hiddenComponentIds = validateHiddenComponentIds(hiddenInput);
       const next = {
         ...current,
         ...(patch.name !== undefined ? { name: String(patch.name) } : {}),
@@ -4478,6 +4844,7 @@
         ...(camera ? { camera } : {}),
         selection,
         measurements,
+        hiddenComponentIds,
         ...(sceneDefinition ? { sceneDefinition } : {}),
         ...(patch.uiState ? { uiState: clone(patch.uiState) } : {}),
         ...(patch.operation ? { operation: clone(patch.operation) } : {}),
@@ -4536,6 +4903,7 @@
         camera: source.camera,
         selection: source.selection,
         measurements: source.measurements,
+        hiddenComponentIds: source.hiddenComponentIds,
         uiState: source.uiState,
         operation: { status: "idle" },
       });
@@ -4692,7 +5060,7 @@
 /* web/structure-viewer/renderers/3dmol-renderer.js */
 (function (root, factory) {
   const dependencies = typeof module === "object" && module.exports
-    ? { ...require("./renderer-contract.js"), ...require("../core/atom-identity.js"), ...require("../core/validators.js") }
+    ? { ...require("./renderer-contract.js"), ...require("../core/atom-identity.js"), ...require("../core/validators.js"), ...require("../core/visual-policy.js") }
     : root.StructureViewerCore;
   const api = factory(root, dependencies);
   if (typeof module === "object" && module.exports) module.exports = api;
@@ -4714,16 +5082,7 @@
     return { target, rotation: [0, 0, 0, 1], distance: radius * 3, projection: "perspective" };
   }
 
-  function styleFor(representation) {
-    const color = representation.colorScheme === "uniform"
-      ? { color: representation.uniformColor || "#64748b" }
-      : { colorscheme: representation.colorScheme === "element" ? "Jmol" : representation.colorScheme };
-    if (representation.kind === "stick") return { stick: { radius: 0.16, singleBonds: !representation.multipleBonds, ...color } };
-    if (representation.kind === "spacefill") return { sphere: { scale: 1, ...color } };
-    if (representation.kind === "line") return { line: { ...color } };
-    if (representation.kind === "cartoon" || representation.kind === "ribbon") return { cartoon: { style: representation.kind === "ribbon" ? "trace" : "rectangle", ...color } };
-    return { stick: { radius: 0.13, singleBonds: !representation.multipleBonds, ...color }, sphere: { scale: 0.28, ...color } };
-  }
+  const styleFor = dependencies.representationStyle;
 
   function resolveMacromolecularRepresentation(scene, representation) {
     if (!["cartoon", "ribbon"].includes(representation.kind) || scene?.macromolecule?.cartoonEligible === true) {
@@ -4791,6 +5150,18 @@
     const corners = [origin, add(origin, a), add(origin, b), add(origin, c), add(origin, a, b), add(origin, a, c), add(origin, b, c), add(origin, a, b, c)];
     return [[0, 1], [0, 2], [0, 3], [1, 4], [1, 5], [2, 4], [2, 6], [3, 5], [3, 6], [4, 7], [5, 7], [6, 7]]
       .map(([begin, end]) => ({ start: corners[begin], end: corners[end] }));
+  }
+
+  function latticeEdges(scene) {
+    if (Array.isArray(scene?.crystal?.latticeSegments)) return scene.crystal.latticeSegments;
+    const matrix = scene?.crystal?.cell?.fracToCart;
+    if (Array.isArray(matrix) && matrix.length === 16) {
+      return unitCellEdges({
+        origin: [0, 0, 0],
+        vectors: [[matrix[0], matrix[3], matrix[6]], [matrix[1], matrix[4], matrix[7]], [matrix[2], matrix[5], matrix[8]]],
+      });
+    }
+    return unitCellEdges(scene?.unitCell);
   }
 
   function create3DmolRendererAdapter(runtime) {
@@ -4874,7 +5245,7 @@
         function addLabel(text, atom, extra = {}) {
           viewer.addLabel(String(text), {
             position: { x: atom.position[0], y: atom.position[1], z: atom.position[2] },
-            fontSize: 11, fontColor: "#111827", backgroundColor: "#ffffff", backgroundOpacity: 0.72,
+            ...dependencies.VISUAL_POLICY.overlay.atom,
             borderThickness: 0, alignment: "center", screenOffset: { x: 0, y: 0 }, inFront: true, ...extra,
           });
           labelCount += 1;
@@ -4926,15 +5297,15 @@
           });
           if (viewState.labels?.showSelectionOrder) selection.forEach((identity, index) => {
             const atom = atomByIdentity.get(serializeAtomIdentity(identity));
-            if (atom) addLabel(index + 1, atom, { fontColor: "#ffffff", backgroundColor: "#1e3a8a", backgroundOpacity: 0.9 });
+            if (atom) addLabel(index + 1, atom, dependencies.VISUAL_POLICY.overlay.selection);
           });
         }
 
         function addUnitCell() {
-          if (!scene?.unitCell || viewState?.crystalDisplay?.showUnitCell !== true) return;
-          unitCellEdges(scene.unitCell).forEach((edge) => viewer.addLine({
+          if (viewState?.crystalDisplay?.showUnitCell !== true) return;
+          latticeEdges(scene).forEach((edge) => viewer.addLine({
             start: { x: edge.start[0], y: edge.start[1], z: edge.start[2] },
-            end: { x: edge.end[0], y: edge.end[1], z: edge.end[2] }, color: "#64748b", linewidth: 2,
+            end: { x: edge.end[0], y: edge.end[1], z: edge.end[2] }, color: dependencies.VISUAL_POLICY.overlay.unitCell.lineColor, linewidth: dependencies.VISUAL_POLICY.overlay.unitCell.lineWidth,
           }));
         }
 
@@ -4949,13 +5320,13 @@
               viewer.addLine({
                 start: { x: atoms[index - 1].position[0], y: atoms[index - 1].position[1], z: atoms[index - 1].position[2] },
                 end: { x: atoms[index].position[0], y: atoms[index].position[1], z: atoms[index].position[2] },
-                color: "#2563eb", dashed: true, linewidth: 2,
+                color: dependencies.VISUAL_POLICY.overlay.measurement.lineColor, dashed: true, linewidth: dependencies.VISUAL_POLICY.overlay.measurement.lineWidth,
               });
             }
             const center = [0, 1, 2].map((axis) => atoms.reduce((sum, atom) => sum + atom.position[axis], 0) / atoms.length);
             const suffix = item.unit === "angstrom" ? " Å" : "°";
             viewer.addLabel(`${Number(item.value).toFixed(item.unit === "angstrom" ? 3 : 2)}${suffix}`, {
-              position: { x: center[0], y: center[1], z: center[2] }, fontColor: "#1e3a8a", backgroundColor: "#dbeafe", inFront: true,
+              position: { x: center[0], y: center[1], z: center[2] }, ...dependencies.VISUAL_POLICY.overlay.measurement, inFront: true,
             });
             labelCount += 1;
             diagnostics.activeLabels += 1;
@@ -5020,18 +5391,16 @@
             const generation = ++viewGeneration;
             viewState = nextViewState;
             try {
-              if (nextViewState.backgroundColor) viewer.setBackgroundColor(nextViewState.backgroundColor, 1);
+              if (nextViewState.backgroundColor) viewer.setBackgroundColor(dependencies.resolveViewerBackground({ toolkitPreferences: { viewerBackground: nextViewState.backgroundColor } }), 1);
               if (model) {
                 model.setStyle({}, {});
                 const resolved = resolveMacromolecularRepresentation(scene, nextViewState.representation);
-                model.setStyle({}, styleFor(resolved.representation));
+                const resolvedStyle = styleFor(resolved.representation);
+                model.setStyle({}, resolved.representation.kind === "surface" ? {} : resolvedStyle);
                 if (nextViewState.hydrogenDisplay === "hide") model.setStyle({ elem: "H" }, {});
                 viewer.removeAllSurfaces?.();
                 if (resolved.representation.kind === "surface" && typeof viewer.addSurface === "function") {
-                  const surface = await viewer.addSurface(threeDmol.SurfaceType?.VDW ?? 1, {
-                    opacity: nextViewState.representation.surfaceOpacity ?? 0.75,
-                    ...(nextViewState.representation.colorScheme === "uniform" ? { color: nextViewState.representation.uniformColor || "#64748b" } : {}),
-                  }, {});
+                  const surface = await viewer.addSurface(threeDmol.SurfaceType?.VDW ?? 1, resolvedStyle.surface, {});
                   if (disposed || generation !== viewGeneration) {
                     if (surface !== undefined && typeof viewer.removeSurface === "function") viewer.removeSurface(surface);
                     else if (disposed) viewer.removeAllSurfaces?.();
@@ -5123,8 +5492,8 @@
 /* web/structure-viewer/workspace/viewer-instance.js */
 (function (root, factory) {
   const dependencies = typeof module === "object" && module.exports
-    ? { ...require("../renderers/renderer-contract.js"), ...require("../core/atom-identity.js"), ...require("../viewer-math.js") }
-    : { ...(root.StructureViewerCore || {}), ...(root.StructureViewerMath || {}) };
+    ? { ...require("../renderers/renderer-contract.js"), ...require("../core/atom-identity.js"), ...require("../crystal/component-visibility.js"), ...require("../viewer-math.js") }
+    : { ...(root.StructureViewerCore || {}), ...(root.StructureViewerCrystal || {}), ...(root.StructureViewerMath || {}) };
   const api = factory(root, dependencies);
   if (typeof module === "object" && module.exports) module.exports = api;
   if (root) root.StructureViewerCore = Object.assign(root.StructureViewerCore || {}, api);
@@ -5186,6 +5555,7 @@
       this.generation = 0;
       this.disposed = false;
       this.currentScene = null;
+      this.visibleScene = null;
       this.viewQueue = Promise.resolve();
     }
 
@@ -5216,6 +5586,7 @@
       this.session = null;
       this.container = null;
       this.currentScene = null;
+      this.visibleScene = null;
     }
 
     mount(container) {
@@ -5228,7 +5599,7 @@
       const rendererCallbacks = {
         onPick: (pick) => {
           if (!active()) return;
-          const atom = this.currentScene?.atoms?.find((candidate) => candidate.renderAtomId === pick?.renderAtomId);
+          const atom = this.visibleScene?.atoms?.find((candidate) => candidate.renderAtomId === pick?.renderAtomId);
           if (atom) this.callbacks.onPick({ identity: atom.identity, additive: pick.additive === true });
         },
         onCameraChanged: (camera) => {
@@ -5266,9 +5637,11 @@
       const generation = this.generation;
       diagnostics.activeLoads += 1;
       try {
-        await this.session.loadScene(scene, { signal: controller.signal });
+        const projected = scene.schema === "rt-render-scene/1" ? dependencies.projectVisibleScene(scene, this.currentState().hiddenComponentIds) : scene;
+        await this.session.loadScene(projected, { signal: controller.signal });
         if (controller.signal.aborted || this.disposed || generation !== this.generation || controller !== this.loadController) return false;
         this.currentScene = scene;
+        this.visibleScene = projected;
         await this.updateView();
         if (controller.signal.aborted || this.disposed || generation !== this.generation || controller !== this.loadController) return false;
         this.updateCamera();
@@ -5295,11 +5668,11 @@
         if (this.disposed || generation !== this.generation) return this;
         const selection = complete?.selection || current.selection;
         const measurements = complete?.measurements || current.measurements;
-        const visibleSelection = this.currentScene
-          ? selection.filter((identity) => dependencies.resolveIdentity(this.currentScene, identity))
+        const visibleSelection = this.visibleScene
+          ? selection.filter((identity) => dependencies.resolveIdentity(this.visibleScene, identity))
           : [];
-        const visibleMeasurements = this.currentScene
-          ? measurements.map((definition) => dependencies.evaluateMeasurement(this.currentScene, definition)).filter((item) => item.status === "available")
+        const visibleMeasurements = this.visibleScene
+          ? measurements.map((definition) => dependencies.evaluateMeasurement(this.visibleScene, definition)).filter((item) => item.status === "available")
           : [];
         this.session.setSelection(visibleSelection);
         this.session.setMeasurements(visibleMeasurements);
@@ -6531,11 +6904,64 @@
   };
 });
 ;
+/* web/structure-viewer/share/legacy-v3-cif-verifier.js */
+(function (root, factory) {
+  const dependencies = typeof module === "object" && module.exports
+    ? require("../core/canonical-json.js")
+    : root.StructureViewerCore;
+  const api = factory(dependencies);
+  if (typeof module === "object" && module.exports) module.exports = api;
+  if (root) root.StructureShareV3Legacy = api;
+})(typeof window !== "undefined" ? window : globalThis, function (dependencies) {
+  "use strict";
+
+  function inverse3(matrix) {
+    const [a, b, c, d, e, f, g, h, i] = matrix;
+    const A = e * i - f * h; const B = f * g - d * i; const C = d * h - e * g;
+    const determinant = a * A + b * B + c * C;
+    if (!Number.isFinite(determinant) || Math.abs(determinant) < 1e-12) throw new Error("Legacy CIF unit cell matrix is singular.");
+    return [A, c * h - b * i, b * f - c * e, B, a * i - c * g, c * d - a * f, C, b * g - a * h, a * e - b * d]
+      .map((entry) => entry / determinant);
+  }
+
+  function matrix4(matrix) {
+    return [matrix[0], matrix[1], matrix[2], 0, matrix[3], matrix[4], matrix[5], 0, matrix[6], matrix[7], matrix[8], 0, 0, 0, 0, 1];
+  }
+
+  function legacyCifUnitCell(cell) {
+    const { a, b, c, alphaDeg, betaDeg, gammaDeg } = cell || {};
+    if (![a, b, c, alphaDeg, betaDeg, gammaDeg].every(Number.isFinite) || a <= 0 || b <= 0 || c <= 0) {
+      throw new TypeError("A validated CIF unit cell is required for legacy verification.");
+    }
+    const radians = Math.PI / 180;
+    const ca = Math.cos(alphaDeg * radians); const cb = Math.cos(betaDeg * radians); const cg = Math.cos(gammaDeg * radians);
+    const sg = Math.sin(gammaDeg * radians);
+    const volumeFactor = Math.sqrt(Math.max(0, 1 - ca * ca - cb * cb - cg * cg + 2 * ca * cb * cg));
+    if (Math.abs(sg) < 1e-12 || volumeFactor <= 0) throw new Error("Legacy CIF unit-cell angles form an invalid cell.");
+    const fracToCart3 = [a, b * cg, c * cb, 0, b * sg, c * (ca - cb * cg) / sg, 0, 0, c * volumeFactor / sg];
+    return { a, b, c, alphaDeg, betaDeg, gammaDeg, volume: a * b * c * volumeFactor, fracToCart: matrix4(fracToCart3), cartToFrac: matrix4(inverse3(fracToCart3)) };
+  }
+
+  async function verifyLegacyCifContentIdentity(currentSource, expectedIdentity) {
+    if (!/^sha256:[0-9a-f]{64}$/.test(expectedIdentity || "")) return false;
+    if (!currentSource || currentSource.structureType !== "crystal" || currentSource.source?.format !== "cif" || !currentSource.crystal?.cell) return false;
+    const legacySource = {
+      ...currentSource,
+      crystal: { ...currentSource.crystal, cell: legacyCifUnitCell(currentSource.crystal.cell) },
+    };
+    const canonical = dependencies.canonicalizeRfc8785(dependencies.scientificProjection(legacySource));
+    const actual = `sha256:${await dependencies.sha256Hex(new TextEncoder().encode(canonical))}`;
+    return actual === expectedIdentity;
+  }
+
+  return { legacyCifUnitCell, verifyLegacyCifContentIdentity };
+});
+;
 /* web/structure-viewer/share/share-v3.js */
 (function (root, factory) {
   const dependencies = typeof module === "object" && module.exports
-    ? { ...require("../core/constants.js"), ...require("../core/canonical-json.js"), ...require("../core/validators.js"), ...require("../core/structure-factory.js"), ...require("../core/scene-definition.js"), ...require("../crystal/unit-cell.js"), ...require("../crystal/symmetry.js") }
-    : { ...root.StructureViewerCore, ...root.StructureViewerCrystal };
+    ? { ...require("../core/constants.js"), ...require("../core/canonical-json.js"), ...require("../core/validators.js"), ...require("../core/structure-factory.js"), ...require("../core/scene-definition.js"), ...require("../core/atom-identity.js"), ...require("../crystal/unit-cell.js"), ...require("../crystal/symmetry.js"), ...require("./legacy-v3-cif-verifier.js") }
+    : { ...root.StructureViewerCore, ...root.StructureViewerCrystal, ...root.StructureShareV3Legacy };
   const api = factory(dependencies);
   if (typeof module === "object" && module.exports) module.exports = api;
   if (root) root.StructureShareV3 = api;
@@ -6717,7 +7143,7 @@
   }
 
   function validateViewSettings(shared, modelIds) {
-    allow(shared, ["modelId", "mode", "scene", "view", "camera"], "$.view");
+    allow(shared, ["modelId", "mode", "scene", "view", "camera", "hiddenComponentIds"], "$.view");
     string(shared.modelId, "$.view.modelId");
     if (!modelIds.has(shared.modelId)) throw new TypeError("$.view.modelId references an unknown model.");
     if (!["molecular", "crystal", "macromolecular"].includes(shared.mode)) throw new TypeError("$.view.mode is invalid.");
@@ -6729,15 +7155,24 @@
     }
     if (shared.scene.molecular !== undefined) allow(shared.scene.molecular, ["hydrogenFilter"], "$.view.scene.molecular");
     if (shared.scene.crystal !== undefined) {
-      allow(shared.scene.crystal, ["content", "replication", "wrapFractionalCoordinates", "disorderMode", "minimumOccupancy", "packingRadiusAngstrom", "disorderAssembly", "disorderGroup"], "$.view.scene.crystal");
+      allow(shared.scene.crystal, ["content", "replication", "wrapFractionalCoordinates", "disorderMode", "minimumOccupancy", "packingMode", "packingMoleculeCount", "packingRadiusAngstrom", "disorderAssembly", "disorderGroup"], "$.view.scene.crystal");
       if (shared.scene.crystal.replication !== undefined) {
         allow(shared.scene.crystal.replication, ["a", "b", "c"], "$.view.scene.crystal.replication");
       }
     }
     const normalizedScene = dependencies.normalizeSceneDefinition({ modelId: shared.modelId, mode: shared.mode, ...(shared.scene || {}) });
-    if (dependencies.canonicalizeRfc8785(shared.scene[sceneKey]) !== dependencies.canonicalizeRfc8785(normalizedScene[sceneKey])) {
-      throw new TypeError(`$.view.scene.${sceneKey} must be canonical and fully validated.`);
+    function assertProvidedMatches(input, normalized, path) {
+      Object.keys(input).forEach((key) => {
+        if (!Object.prototype.hasOwnProperty.call(normalized, key)) throw new TypeError(`${path}.${key} is not valid for the selected scene.`);
+        const value = input[key]; const expected = normalized[key];
+        if (value && expected && typeof value === "object" && typeof expected === "object" && !Array.isArray(value) && !Array.isArray(expected)) {
+          assertProvidedMatches(value, expected, `${path}.${key}`);
+        } else if (dependencies.canonicalizeRfc8785(value) !== dependencies.canonicalizeRfc8785(expected)) {
+          throw new TypeError(`${path}.${key} must be canonical and fully validated.`);
+        }
+      });
     }
+    assertProvidedMatches(shared.scene[sceneKey], normalizedScene[sceneKey], `$.view.scene.${sceneKey}`);
     allow(shared.view, ["representation", "labels", "hydrogenDisplay", "backgroundColor", "crystalDisplay"], "$.view.view");
     allow(shared.view.representation, ["kind", "colorScheme", "multipleBonds", "uniformColor", "surfaceOpacity"], "$.view.view.representation");
     if (!["ball-stick", "stick", "spacefill", "line", "cartoon", "ribbon", "surface"].includes(shared.view.representation.kind)) throw new TypeError("Viewer representation is invalid.");
@@ -6767,6 +7202,27 @@
         || !Number.isFinite(shared.camera.distance) || shared.camera.distance <= 0
         || !["perspective", "orthographic"].includes(shared.camera.projection)) throw new TypeError("Viewer camera is invalid.");
     }
+    const hiddenComponentIds = shared.hiddenComponentIds === undefined
+      ? []
+      : array(shared.hiddenComponentIds, "$.view.hiddenComponentIds", dependencies.LIMITS.derivedAtoms);
+    if (shared.mode !== "crystal" && hiddenComponentIds.length) {
+      throw new TypeError("$.view.hiddenComponentIds is only valid in crystal mode.");
+    }
+    const normalizedHidden = hiddenComponentIds.map((value) => {
+      if (typeof value !== "string") throw new TypeError("$.view.hiddenComponentIds must contain strings.");
+      const identity = dependencies.parseDerivedComponentIdentity(value);
+      if (identity.modelId !== shared.modelId) throw new TypeError("$.view.hiddenComponentIds references a different model.");
+      return dependencies.serializeDerivedComponentIdentity(identity);
+    });
+    if (new Set(normalizedHidden).size !== normalizedHidden.length) throw new TypeError("$.view.hiddenComponentIds must not contain duplicates.");
+    return {
+      modelId: shared.modelId,
+      mode: shared.mode,
+      scene: { [sceneKey]: clone(normalizedScene[sceneKey]) },
+      view: clone(shared.view),
+      ...(shared.camera !== undefined ? { camera: clone(shared.camera) } : {}),
+      hiddenComponentIds: normalizedHidden,
+    };
   }
 
   function sharedAtom(site) {
@@ -6836,8 +7292,11 @@
       scene: clone(settings.scene || {}),
       view: clone(settings.view),
       ...(settings.camera !== undefined ? { camera: clone(settings.camera) } : {}),
+      ...(Array.isArray(settings.hiddenComponentIds) && settings.hiddenComponentIds.length ? { hiddenComponentIds: clone(settings.hiddenComponentIds) } : {}),
     };
-    return { schema: SCHEMA, source: sharedSource, view: sharedView };
+    const payload = { schema: SCHEMA, source: sharedSource, view: sharedView };
+    validatePayload(payload);
+    return payload;
   }
 
   async function encodePayload(payload) {
@@ -7035,9 +7494,13 @@
       ? (options.uuid ? { uuid: options.uuid } : {})
       : { uuid: () => payload.source.sourceStructureId };
     const source = await dependencies.createSourceStructure(parsedFromShared(payload.source), factoryOptions);
-    if (source.contentIdentity !== payload.source.contentIdentity) throw new TypeError("Shared structure content identity does not match its scientific content.");
+    if (source.contentIdentity !== payload.source.contentIdentity
+      && !await dependencies.verifyLegacyCifContentIdentity(source, payload.source.contentIdentity)) {
+      throw new TypeError("Shared structure content identity does not match its scientific content.");
+    }
     if (identities instanceof Map && identities.has(source.structureId) && identities.get(source.structureId) !== source.contentIdentity) throw new TypeError("Shared source ID collision could not be remapped safely.");
-    return { source, settings: clone(payload.view), payload };
+    const modelIds = new Set(payload.source.models.map((model) => model.modelId));
+    return { source, settings: validateViewSettings(payload.view, modelIds), payload };
   }
 
   async function createHash(source, settings) {
@@ -7050,7 +7513,7 @@
     return decodePayload(params.get("data"));
   }
 
-  return { SCHEMA, createPayload, encodePayload, decodePayload, createHash, decodeHash, validatePayload };
+  return { SCHEMA, createPayload, encodePayload, decodePayload, createHash, decodeHash, validatePayload, parsedFromShared };
 });
 ;
 /* web/structure-viewer/share-codec.js */
@@ -7651,8 +8114,8 @@
 /* web/structure-viewer/ui/crystal-panel.js */
 (function (root, factory) {
   const dependencies = typeof module === "object" && module.exports
-    ? require("../core/scene-definition.js")
-    : root.StructureViewerCore;
+    ? { ...require("../core/scene-definition.js"), ...require("../crystal/supercell-size.js"), ...require("../core/constants.js") }
+    : { ...(root.StructureViewerCore || {}), ...(root.StructureViewerCrystal || {}) };
   const api = factory(dependencies);
   if (typeof module === "object" && module.exports) module.exports = api;
   if (root) root.StructureViewerUI = Object.assign(root.StructureViewerUI || {}, api);
@@ -7679,12 +8142,32 @@
       replication: state.replication || { a: [0, 0], b: [0, 0], c: [0, 0] },
       wrapFractionalCoordinates: state.wrapFractionalCoordinates === true,
     };
-    if (crystal.content === "packing") crystal.packingRadiusAngstrom = state.packingRadiusAngstrom === undefined ? 8 : Number(state.packingRadiusAngstrom);
+    if (crystal.content === "packing") {
+      crystal.packingMode = state.packingMode || "molecule-count";
+      crystal.packingMoleculeCount = state.packingMoleculeCount === undefined ? 10 : Number(state.packingMoleculeCount);
+      crystal.packingRadiusAngstrom = state.packingRadiusAngstrom === undefined ? 8 : Number(state.packingRadiusAngstrom);
+    }
     if (crystal.disorderMode === "group") {
       if (state.disorderAssembly) crystal.disorderAssembly = state.disorderAssembly;
       if (state.disorderGroup) crystal.disorderGroup = state.disorderGroup;
     }
-    return Object.freeze({ definition: dependencies.normalizeSceneDefinition({ modelId, mode: "crystal", crystal }), exportMode });
+    return Object.freeze({
+      definition: dependencies.normalizeSceneDefinition({ modelId, mode: "crystal", crystal }),
+      exportMode,
+      showUnitCell: state.showUnitCell !== false,
+    });
+  }
+
+  function crystalControlVisibility(normalized) {
+    const crystal = normalized?.definition?.crystal;
+    if (!crystal) throw new TypeError("Normalized crystal panel state is required.");
+    const packing = crystal.content === "packing";
+    return Object.freeze({
+      packing,
+      packingCount: packing && crystal.packingMode === "molecule-count",
+      packingRadius: packing && crystal.packingMode === "radius",
+      supercell: crystal.content === "supercell",
+    });
   }
 
   function crystalMetadataRows(source) {
@@ -7754,16 +8237,33 @@
     const occupancy = createElement(document, "input", { type: "number", min: "0", max: "1", step: "0.05", "aria-label": "Minimum occupancy" });
     const disorderAssembly = createElement(document, "input", { type: "text", "aria-label": "Disorder assembly" });
     const disorderGroup = createElement(document, "input", { type: "text", "aria-label": "Disorder group" });
+    const packingMode = createElement(document, "select", { "aria-label": "Packing mode" });
+    [["molecule-count", "Molecule count"], ["radius", "Radius"]].forEach(([value, label]) => packingMode.append(option(document, value, label)));
+    const moleculeCount = createElement(document, "input", { type: "number", min: "1", step: "1", "aria-label": "Packing molecule count" });
     const radius = createElement(document, "input", { type: "number", min: "3", max: "30", step: "0.5", "aria-label": "Packing radius in Angstrom" });
     const exportMode = createElement(document, "select", { "aria-label": "XYZ export mode" });
     [["source-asymmetric-unit", "Source asymmetric unit"], ["visible-scene", "Visible scene"], ["selected-component", "Selected component"]].forEach(([value, label]) => exportMode.append(option(document, value, label)));
+    const packingModeField = labeledControl(document, "Packing mode", packingMode);
+    const moleculeCountField = labeledControl(document, "Molecules", moleculeCount);
     const radiusField = labeledControl(document, "Radius (Å)", radius);
     const assemblyField = labeledControl(document, "Disorder assembly", disorderAssembly);
     const groupField = labeledControl(document, "Disorder group", disorderGroup);
-    fields.append(labeledControl(document, "Scene", content), labeledControl(document, "Model", model), labeledControl(document, "Disorder", disorder), labeledControl(document, "Min. occupancy", occupancy), assemblyField, groupField, radiusField, labeledControl(document, "XYZ export", exportMode));
+    fields.append(labeledControl(document, "Scene", content), labeledControl(document, "Model", model), labeledControl(document, "Disorder", disorder), labeledControl(document, "Min. occupancy", occupancy), assemblyField, groupField, packingModeField, moleculeCountField, radiusField, labeledControl(document, "XYZ export", exportMode));
+
+    const supercell = createElement(document, "fieldset", { className: "crystal-supercell" });
+    supercell.append(createElement(document, "legend", {}, "Supercell"));
+    const presetOne = createElement(document, "button", { type: "button", className: "outlined-action", "data-size": "1" }, "1×1×1");
+    const presetTwo = createElement(document, "button", { type: "button", className: "outlined-action", "data-size": "2" }, "2×2×2");
+    const sizeInputs = {};
+    supercell.append(presetOne, presetTwo);
+    [["x", "X"], ["y", "Y"], ["z", "Z"]].forEach(([axis, label]) => {
+      const input = createElement(document, "input", { type: "number", min: "1", max: String(dependencies.LIMITS.replicationAxisMax + 1), step: "1", "aria-label": `Supercell ${label} size` });
+      sizeInputs[axis] = input;
+      supercell.append(labeledControl(document, label, input));
+    });
 
     const replication = createElement(document, "fieldset", { className: "crystal-replication" });
-    replication.append(createElement(document, "legend", {}, "Replication ranges"));
+    replication.append(createElement(document, "legend", {}, "Symmetry-mate ranges"));
     const rangeInputs = {};
     ["a", "b", "c"].forEach((axis) => {
       const row = createElement(document, "label", { className: "crystal-range" });
@@ -7775,6 +8275,16 @@
       replication.append(row);
     });
 
+    const display = createElement(document, "fieldset", { className: "crystal-display" });
+    display.append(createElement(document, "legend", {}, "Display"));
+    const unitCell = createElement(document, "input", { type: "checkbox", "aria-label": "Unit cell" });
+    const unitCellLabel = createElement(document, "label", { className: "crystal-toggle" });
+    unitCellLabel.append(unitCell, createElement(document, "span", {}, "Unit cell"));
+    const hideMolecule = createElement(document, "button", { type: "button", className: "outlined-action" }, "Hide molecule");
+    const showAll = createElement(document, "button", { type: "button", className: "outlined-action" }, "Show all");
+    hideMolecule.disabled = options.canHideSelected !== true;
+    display.append(unitCellLabel, hideMolecule, showAll);
+
     const metadata = createElement(document, "dl", { className: "crystal-metadata" });
     crystalMetadataRows(source).forEach((row) => metadata.append(createElement(document, "dt", {}, row.label), createElement(document, "dd", {}, row.value)));
     const feedback = createElement(document, "div", { className: "crystal-feedback" });
@@ -7784,13 +8294,16 @@
     const cancel = createElement(document, "button", { type: "button", className: "outlined-action crystal-cancel" }, "Cancel");
     cancel.hidden = true;
     feedback.append(warnings, progress, cancel);
-    panel.append(fields, replication, metadata, exportSummary, feedback);
+    panel.append(fields, supercell, replication, display, metadata, exportSummary, feedback);
     container.append(panel);
 
     function readState() {
       const ranges = {};
       ["a", "b", "c"].forEach((axis) => { ranges[axis] = rangeInputs[axis].map((input) => Number(input.value)); });
-      return { modelId: model.value, content: content.value, disorderMode: disorder.value, disorderAssembly: disorderAssembly.value.trim(), disorderGroup: disorderGroup.value.trim(), minimumOccupancy: Number(occupancy.value), packingRadiusAngstrom: Number(radius.value), replication: ranges, exportMode: exportMode.value };
+      const replication = content.value === "supercell"
+        ? dependencies.replicationFromSize({ x: Number(sizeInputs.x.value), y: Number(sizeInputs.y.value), z: Number(sizeInputs.z.value) })
+        : ranges;
+      return { modelId: model.value, content: content.value, disorderMode: disorder.value, disorderAssembly: disorderAssembly.value.trim(), disorderGroup: disorderGroup.value.trim(), minimumOccupancy: Number(occupancy.value), packingMode: packingMode.value, packingMoleculeCount: Number(moleculeCount.value), packingRadiusAngstrom: Number(radius.value), replication, exportMode: exportMode.value, showUnitCell: unitCell.checked };
     }
 
     function reflect(next) {
@@ -7802,18 +8315,28 @@
       disorderAssembly.value = normalized.definition.crystal.disorderAssembly || "";
       disorderGroup.value = normalized.definition.crystal.disorderGroup || "";
       occupancy.value = String(normalized.definition.crystal.minimumOccupancy);
+      packingMode.value = normalized.definition.crystal.packingMode || "molecule-count";
+      moleculeCount.value = String(normalized.definition.crystal.packingMoleculeCount ?? 10);
       radius.value = String(normalized.definition.crystal.packingRadiusAngstrom ?? 8);
       exportMode.value = normalized.exportMode;
+      unitCell.checked = normalized.showUnitCell;
       ["a", "b", "c"].forEach((axis) => normalized.definition.crystal.replication[axis].forEach((value, index) => { rangeInputs[axis][index].value = String(value); }));
-      radiusField.hidden = normalized.definition.crystal.content !== "packing";
+      const visibility = crystalControlVisibility(normalized);
+      packingModeField.hidden = !visibility.packing;
+      moleculeCountField.hidden = !visibility.packingCount;
+      radiusField.hidden = !visibility.packingRadius;
+      supercell.hidden = !visibility.supercell;
+      const size = dependencies.sizeFromReplication(normalized.definition.crystal.replication);
+      Object.entries(size).forEach(([axis, value]) => { sizeInputs[axis].value = String(value); });
       assemblyField.hidden = normalized.definition.crystal.disorderMode !== "group";
       groupField.hidden = normalized.definition.crystal.disorderMode !== "group";
-      replication.hidden = !["symmetry-mates", "supercell"].includes(normalized.definition.crystal.content);
+      replication.hidden = normalized.definition.crystal.content !== "symmetry-mates";
       return normalized;
     }
 
-    function notify() {
+    function notify(event) {
       if (disposed) return;
+      if (event?.target === unitCell) return;
       try {
         const normalized = normalizeCrystalPanelState(source, readState());
         state = { ...readState() };
@@ -7825,6 +8348,18 @@
       }
     }
     panel.addEventListener("change", notify);
+    unitCell.addEventListener("change", () => {
+      state = { ...state, showUnitCell: unitCell.checked };
+      options.onUnitCellChange?.(unitCell.checked);
+    });
+    const applyPreset = (size) => {
+      Object.values(sizeInputs).forEach((input) => { input.value = String(size); });
+      notify();
+    };
+    presetOne.addEventListener("click", () => applyPreset(1));
+    presetTwo.addEventListener("click", () => applyPreset(2));
+    hideMolecule.addEventListener("click", () => options.onHideSelected?.());
+    showAll.addEventListener("click", () => options.onShowAll?.());
     cancel.addEventListener("click", () => options.onCancel?.());
     reflect(state);
 
@@ -7832,6 +8367,7 @@
       element: panel,
       getState: () => normalizeCrystalPanelState(source, readState()),
       setState: (next) => reflect(next || {}),
+      setHideAvailable: (available) => { hideMolecule.disabled = available !== true; },
       setProgress: (message) => { progress.textContent = message || ""; cancel.hidden = !message; },
       setWarnings: (messages) => {
         const format = (message) => typeof message === "string" ? message : message?.message || message?.code || String(message || "");
@@ -7843,7 +8379,7 @@
     });
   }
 
-  return { normalizeCrystalPanelState, crystalMetadataRows, crystalExportSummary, createCrystalPanel };
+  return { normalizeCrystalPanelState, crystalControlVisibility, crystalMetadataRows, crystalExportSummary, createCrystalPanel };
 });
 ;
 /* web/structure-viewer/ui/app-controller.js */
@@ -7886,7 +8422,7 @@
     const navigator = options.navigator || root.navigator;
     const rendererAdapter = options.rendererAdapter || dependencies.ThreeDmolRendererAdapter;
     const createCrystalPanel = options.createCrystalPanel || dependencies.createCrystalPanel;
-    const workspace = options.workspace || dependencies.createWorkspaceStore();
+    const workspace = options.workspace || dependencies.createWorkspaceStore({ theme: options.theme, toolkitPreferences: options.toolkitPreferences });
     const registry = dependencies.createParserRegistry([dependencies.XyzParserAdapter, dependencies.MolParserAdapter, dependencies.SdfParserAdapter, dependencies.PdbParserAdapter, dependencies.CifParserAdapter]);
     const runtime = new Map();
     let tabs = null;
@@ -7927,10 +8463,23 @@
       return runtime.get(workspace.getState().activeViewerId) || null;
     }
 
-    function crystalPanelState(definition, exportMode) {
+    function crystalPanelState(definition, exportMode, view) {
       return definition?.mode === "crystal"
-        ? { modelId: definition.modelId, ...definition.crystal, exportMode }
+        ? { modelId: definition.modelId, ...definition.crystal, exportMode, showUnitCell: view?.crystalDisplay?.showUnitCell !== false }
         : { modelId: definition?.modelId, exportMode };
+    }
+
+    function crystalPanelOptions(entry, definition, view) {
+      return {
+        document, container: elements.crystalPanel, source: entry.source,
+        initialState: crystalPanelState(definition, entry.exportMode, view),
+        canHideSelected: Boolean(selectedDerivedComponentId(entry)),
+        onChange: (normalized) => applyCrystalPanelChange(entry, normalized),
+        onUnitCellChange: (visible) => applyUnitCellVisibility(entry, visible),
+        onHideSelected: () => hideSelectedComponent(entry),
+        onShowAll: () => showAllComponents(entry),
+        onCancel: () => entry.operation?.abort?.(),
+      };
     }
 
     function sharedViewerSettings(current) {
@@ -7943,6 +8492,7 @@
         scene: { [sceneKey]: definition[sceneKey] || {} },
         view: state.view,
         camera: current.instance.getCamera(),
+        hiddenComponentIds: state.hiddenComponentIds,
       };
     }
 
@@ -8105,7 +8655,9 @@
         instance.mount(host);
         pane = dependencies.createViewerPaneController({ viewerId: duplicateId, workspace, viewerInstance: instance });
         const priorPick = instance.callbacks.onPick;
-        instance.callbacks.onPick = (pick) => Promise.resolve(priorPick(pick)).then(updateMeasurement).catch((error) => setStatus(error?.message || String(error), true));
+        instance.callbacks.onPick = (pick) => Promise.resolve(priorPick(pick)).then(() => {
+          updateMeasurement(); refreshCrystalActions(runtime.get(duplicateId));
+        }).catch((error) => setStatus(error?.message || String(error), true));
         await instance.updateScene(current.instance.currentScene);
         const entry = {
           viewerId: duplicateId, instance, pane, source: current.source, payload: current.payload,
@@ -8115,12 +8667,7 @@
         runtime.set(duplicateId, entry);
         if (isCrystal(entry.source) && elements.crystalPanel) {
           const duplicateDefinition = workspace.getState().instances[duplicateId].sceneDefinition;
-          crystalPanel = createCrystalPanel({
-            document, container: elements.crystalPanel, source: entry.source,
-            initialState: crystalPanelState(duplicateDefinition, entry.exportMode),
-            onChange: (normalized) => applyCrystalPanelChange(entry, normalized),
-            onCancel: () => entry.operation?.abort?.(),
-          });
+          crystalPanel = createCrystalPanel(crystalPanelOptions(entry, duplicateDefinition, workspace.getState().instances[duplicateId].view));
           entry.crystalPanel = crystalPanel;
           crystalPanel.setWarnings(entry.instance.currentScene?.warnings || entry.source.warnings || []);
         }
@@ -8144,8 +8691,8 @@
     function updateMeasurement() {
       const current = activeRuntime();
       const definition = current && workspace.getState().instances[current.viewerId]?.measurements[0];
-      const evaluated = definition && current.instance.currentScene
-        ? dependencies.evaluateMeasurement(current.instance.currentScene, definition)
+      const evaluated = definition && current.instance.visibleScene
+        ? dependencies.evaluateMeasurement(current.instance.visibleScene, definition)
         : null;
       if (!elements.measurement) return;
       elements.measurement.hidden = !evaluated || evaluated.status !== "available";
@@ -8180,7 +8727,7 @@
 
     function selectedRenderAtomIds(current) {
       const selection = workspace.getState().instances[current.viewerId]?.selection || [];
-      return selection.map((identity) => dependencies.resolveIdentity(current.instance.currentScene, identity)?.renderAtomId).filter(Boolean);
+      return selection.map((identity) => dependencies.resolveIdentity(current.instance.visibleScene, identity)?.renderAtomId).filter(Boolean);
     }
 
     function crystalSceneLabel(current) {
@@ -8199,7 +8746,7 @@
       try {
         if (isCrystal(current.source)) {
           const mode = current.exportMode || "source-asymmetric-unit";
-          const exportOptions = { source: current.source, scene: current.instance.currentScene, modelId: current.modelId, mode, selectedRenderAtomIds: selectedRenderAtomIds(current) };
+          const exportOptions = { source: current.source, scene: current.instance.visibleScene, modelId: current.modelId, mode, selectedRenderAtomIds: selectedRenderAtomIds(current) };
           current.fullXyz = dependencies.exportCrystalXyz(exportOptions);
           current.coordinateRows = dependencies.crystalCoordinateRows(exportOptions);
           const atomCount = current.coordinateRows ? current.coordinateRows.split("\n").filter(Boolean).length : 0;
@@ -8218,6 +8765,65 @@
       }
       if (workspace.getState().activeViewerId === current.viewerId && elements.xyz) elements.xyz.value = current.fullXyz;
       return current.fullXyz;
+    }
+
+    function selectedDerivedComponentId(current) {
+      if (!current?.instance?.visibleScene) return null;
+      const selection = workspace.getState().instances[current.viewerId]?.selection || [];
+      const atom = selection.length ? dependencies.resolveIdentity(current.instance.visibleScene, selection[0]) : null;
+      return atom?.derivedComponentIdentity ? dependencies.serializeDerivedComponentIdentity(atom.derivedComponentIdentity) : null;
+    }
+
+    function refreshCrystalActions(current) {
+      current?.crystalPanel?.setHideAvailable?.(Boolean(selectedDerivedComponentId(current)));
+    }
+
+    async function applyUnitCellVisibility(current, visible) {
+      const previous = workspace.getState().instances[current.viewerId].view.crystalDisplay.showUnitCell;
+      workspace.patchViewer(current.viewerId, { view: { crystalDisplay: { showUnitCell: visible === true } } });
+      try { await current.instance.updateView(); }
+      catch (error) {
+        workspace.patchViewer(current.viewerId, { view: { crystalDisplay: { showUnitCell: previous } } });
+        await current.instance.updateView();
+        current.crystalPanel?.setState({ showUnitCell: previous });
+        setStatus(error?.message || String(error), true);
+      }
+    }
+
+    async function hideSelectedComponent(current) {
+      const componentId = selectedDerivedComponentId(current);
+      if (!componentId) return false;
+      const viewer = workspace.getState().instances[current.viewerId];
+      const hiddenComponentIds = viewer.hiddenComponentIds.includes(componentId) ? viewer.hiddenComponentIds : [...viewer.hiddenComponentIds, componentId];
+      workspace.patchViewer(current.viewerId, { hiddenComponentIds });
+      try {
+        await current.instance.updateScene(current.instance.currentScene);
+        refreshExport(current);
+        refreshCrystalActions(current);
+        return true;
+      } catch (error) {
+        workspace.patchViewer(current.viewerId, { hiddenComponentIds: viewer.hiddenComponentIds });
+        await current.instance.updateScene(current.instance.currentScene);
+        setStatus(error?.message || String(error), true);
+        return false;
+      }
+    }
+
+    async function showAllComponents(current) {
+      const viewer = workspace.getState().instances[current.viewerId];
+      if (!viewer.hiddenComponentIds.length) return true;
+      workspace.patchViewer(current.viewerId, { hiddenComponentIds: [] });
+      try {
+        await current.instance.updateScene(current.instance.currentScene);
+        refreshExport(current);
+        refreshCrystalActions(current);
+        return true;
+      } catch (error) {
+        workspace.patchViewer(current.viewerId, { hiddenComponentIds: viewer.hiddenComponentIds });
+        await current.instance.updateScene(current.instance.currentScene);
+        setStatus(error?.message || String(error), true);
+        return false;
+      }
     }
 
     async function applyCrystalPanelChange(current, normalized) {
@@ -8247,6 +8853,7 @@
         current.modelId = normalized.definition.modelId;
         current.exportMode = normalized.exportMode;
         refreshExport(current);
+        refreshCrystalActions(current);
         current.crystalPanel?.setWarnings(scene.warnings || []);
       } catch (error) {
         if (error?.name !== "AbortError" && current.operation === operation) {
@@ -8308,7 +8915,7 @@
         pane = dependencies.createViewerPaneController({ viewerId, workspace, viewerInstance: instance });
         const priorPick = instance.callbacks.onPick;
         instance.callbacks.onPick = (pick) => Promise.resolve(priorPick(pick))
-          .then(updateMeasurement)
+          .then(() => { updateMeasurement(); refreshCrystalActions(runtime.get(viewerId)); })
           .catch((error) => setStatus(error?.message || String(error), true));
         await instance.updateScene(scene);
         previousViewerIds.forEach(disposeRuntime);
@@ -8316,12 +8923,7 @@
         runtime.set(viewerId, entry);
         if (isCrystal(source) && elements.crystalPanel) {
           const initialDefinition = workspace.getState().instances[viewerId].sceneDefinition;
-          crystalPanel = createCrystalPanel({
-            document, container: elements.crystalPanel, source,
-            initialState: crystalPanelState(initialDefinition, entry.exportMode),
-            onChange: (normalized) => applyCrystalPanelChange(entry, normalized),
-            onCancel: () => entry.operation?.abort?.(),
-          });
+          crystalPanel = createCrystalPanel(crystalPanelOptions(entry, initialDefinition, workspace.getState().instances[viewerId].view));
           entry.crystalPanel = crystalPanel;
           crystalPanel.setWarnings(scene.warnings || source.warnings || []);
         }
@@ -8383,6 +8985,7 @@
           camera: snapshot.camera,
           selection: snapshot.selection,
           measurements: snapshot.measurements,
+          hiddenComponentIds: snapshot.hiddenComponentIds || [],
         });
         const scene = await buildScene(source, snapshot.sceneDefinition);
         host = elements.viewer?.ownerDocument?.createElement?.("div") || elements.viewer;
@@ -8397,7 +9000,9 @@
         instance.mount(host);
         pane = dependencies.createViewerPaneController({ viewerId, workspace, viewerInstance: instance });
         const priorPick = instance.callbacks.onPick;
-        instance.callbacks.onPick = (pick) => Promise.resolve(priorPick(pick)).then(updateMeasurement).catch((error) => setStatus(error?.message || String(error), true));
+        instance.callbacks.onPick = (pick) => Promise.resolve(priorPick(pick)).then(() => {
+          updateMeasurement(); refreshCrystalActions(runtime.get(viewerId));
+        }).catch((error) => setStatus(error?.message || String(error), true));
         await instance.updateScene(scene);
         const exported = isCrystal(source)
           ? dependencies.exportCrystalXyz({ source, modelId, mode: "source-asymmetric-unit" })
@@ -8409,12 +9014,7 @@
         };
         runtime.set(viewerId, entry);
         if (isCrystal(source) && elements.crystalPanel) {
-          crystalPanel = createCrystalPanel({
-            document, container: elements.crystalPanel, source,
-            initialState: crystalPanelState(snapshot.sceneDefinition, entry.exportMode),
-            onChange: (normalized) => applyCrystalPanelChange(entry, normalized),
-            onCancel: () => entry.operation?.abort?.(),
-          });
+          crystalPanel = createCrystalPanel(crystalPanelOptions(entry, snapshot.sceneDefinition, workspace.getState().instances[viewerId].view));
           entry.crystalPanel = crystalPanel;
           crystalPanel.setWarnings(scene.warnings || source.warnings || []);
         }
@@ -8605,7 +9205,7 @@
             sceneDefinition: definition,
             view: decoded.settings.view,
             ...(decoded.settings.camera ? { camera: decoded.settings.camera } : {}),
-            selection: [], measurements: [],
+            selection: [], measurements: [], hiddenComponentIds: decoded.settings.hiddenComponentIds,
             crystalSettings: definition.mode === "crystal" ? definition.crystal : null,
           });
         }
