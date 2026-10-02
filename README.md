@@ -163,7 +163,7 @@ independently of cell edges; their visibility is retained in v3 shares. Explicit
 axis settings in saved shares are honored. Representation names are ball & stick,
 stick and spacefill in both interface languages.
 
-Crystal View controls switch between Perspective and Orthographic, view from
+Crystal View controls toggle Perspective/Orthographic with one button, view from
 the positive/negative a/b/c sides, and rotate around actual crystallographic
 axes. Rotation starts at 5 degrees per click and accepts 0.1–180 degrees.
 Axis views use a perpendicularized secondary crystal direction for screen-up;

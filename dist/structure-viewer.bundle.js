@@ -8859,9 +8859,15 @@
     const feedback = createElement(document, "div", { className: "crystal-feedback" });
     const cameraControls=createElement(document,"fieldset",{className:"crystal-camera-controls"});
     cameraControls.append(createElement(document,"legend",{},"View"));
-    const projection=createElement(document,"select",{"aria-label":"Projection"});
-    projection.append(option(document,"perspective","Perspective"),option(document,"orthographic","Orthographic"));
-    projection.value=options.camera?.projection||"perspective";
+    const projection=createElement(document,"button",{type:"button",className:"outlined-action","aria-label":"Projection"});
+    function reflectProjection(value){
+      projection.value=value==="orthographic"?"orthographic":"perspective";
+      const text=projection.value==="orthographic"?"Orthographic":"Perspective";
+      projection.setAttribute("data-viewer-text",text);
+      projection.textContent=text;
+      projection.setAttribute("aria-pressed",String(projection.value==="orthographic"));
+    }
+    reflectProjection(options.camera?.projection);
     cameraControls.append(labeledControl(document,"Projection",projection));
     const alignButtons=createElement(document,"div",{className:"crystal-camera-buttons"});
     cameraControls.append(createElement(document,"span",{className:"crystal-field-label"},"View along crystal axis"),alignButtons);
@@ -8873,7 +8879,7 @@
     cameraControls.append(cameraFeedback);
     function cameraAction(action){
       try { options.onCameraChange?.(action); cameraFeedback.textContent=""; }
-      catch(error){cameraFeedback.textContent=error?.message||String(error);projection.value=options.getCamera?.()?.projection||projection.value;}
+      catch(error){cameraFeedback.textContent=error?.message||String(error);reflectProjection(options.getCamera?.()?.projection||projection.value);}
     }
     for(const axis of ["a","b","c"]) for(const side of [1,-1]) {
       const sign=side===1?"+":"−";
@@ -8888,7 +8894,7 @@
       });
       rotationButtons.append(rotate);
     }
-    projection.addEventListener("change",()=>cameraAction({kind:"projection",projection:projection.value}));
+    projection.addEventListener("click",()=>cameraAction({kind:"projection",projection:projection.value==="perspective"?"orthographic":"perspective"}));
     const exportSummary = createElement(document, "output", { className: "crystal-export-summary", "aria-live": "polite" });
     const warnings = createElement(document, "output", { className: "crystal-warnings", "aria-live": "polite" });
     const progress = createElement(document, "output", { className: "crystal-progress", "aria-live": "polite" });
@@ -9001,7 +9007,7 @@
       },
       setExportSummary: (summary) => { exportSummary.textContent = crystalExportSummary(summary); exportSummary.setAttribute("data-viewer-export-summary", exportSummary.textContent); },
       getExportMode: () => exportMode.value,
-      setCamera: (camera) => {projection.value=camera.projection;},
+      setCamera: (camera) => {reflectProjection(camera.projection);},
       dispose: () => { disposed = true; panel.remove(); information.remove(); },
     });
   }
