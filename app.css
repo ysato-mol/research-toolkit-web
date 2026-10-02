@@ -220,4 +220,7 @@ body[data-viewer-host="toolkit"] .sidebar-tabs button[aria-selected="true"] { ba
   background: var(--color-surface) !important; color: var(--color-primary) !important;
   border-color: var(--color-primary) !important; box-shadow: 0 1px 3px rgba(0,0,0,.12);
 }
-.crystal-projection-options button:hover { color: var(--color-primary) !important; }
+.crystal-projection-options button:hover:not(:disabled) {
+  background: var(--color-primary-container) !important;
+  color: var(--color-on-primary-container) !important;
+}
