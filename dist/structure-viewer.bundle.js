@@ -528,18 +528,19 @@
       || left.effectiveCellTranslation[2] - right.effectiveCellTranslation[2];
   }
 
-  function candidateFor(site, operation, requestedCellTranslation, wrap) {
+  function candidateFor(site, operation, requestedCellTranslation, wrap, displayOffsets) {
     const transformed = symmetry.applySymmetryFloat(operation, fractional(site));
     const canonical = transformed.map(canonicalCoordinate);
     const effectiveCellTranslation = Object.freeze(canonical.map((entry, index) => requestedCellTranslation[index] + entry.carry));
     const unwrapped = transformed.map((value, index) => value + requestedCellTranslation[index]);
-    const displayWrapAdjustment = Object.freeze(wrap ? unwrapped.map((value) => {
+    const moleculeOffset = displayOffsets?.get(JSON.stringify([site.siteId, operation.operationId]));
+    const displayWrapAdjustment = Object.freeze(moleculeOffset || (wrap ? transformed.map((value) => {
       const adjustment = -Math.floor(value + POSITION_TOLERANCE);
       return Object.is(adjustment, -0) ? 0 : adjustment;
-    }) : [0, 0, 0]);
+    }) : [0, 0, 0]));
     const fractionalPosition = Object.freeze(unwrapped.map((value, index) => {
       const displayed = value + displayWrapAdjustment[index];
-      return Math.abs(displayed) <= POSITION_TOLERANCE || Math.abs(displayed - 1) <= POSITION_TOLERANCE ? 0 : displayed;
+      return Math.abs(displayed) <= POSITION_TOLERANCE ? 0 : displayed;
     }));
     return Object.freeze({
       symmetryOperationId: operation.operationId,
@@ -551,12 +552,12 @@
     });
   }
 
-  function partitionKey(site, candidate) {
+  function partitionKey(site, candidate, displayOffsets) {
     return JSON.stringify([
       site.siteId,
       disorderKey(site) || null,
       ...candidate.requestedCellTranslation,
-      ...candidate.effectiveCellTranslation,
+      ...(displayOffsets ? candidate.fractionalPosition.map(value => Math.floor(value + POSITION_TOLERANCE)) : candidate.effectiveCellTranslation),
     ]);
   }
 
@@ -569,7 +570,7 @@
     })));
   }
 
-  function expandSites({ sites, operations, requestedTranslations, wrap = false }) {
+  function expandSites({ sites, operations, requestedTranslations, wrap = false, displayOffsets }) {
     if (!Array.isArray(sites) || !sites.length) throw new TypeError("Crystal expansion requires source sites.");
     if (!Array.isArray(operations) || !operations.length) throw new TypeError("Crystal expansion requires symmetry operations.");
     if (!Array.isArray(requestedTranslations) || !requestedTranslations.length) throw new TypeError("Crystal expansion requires requested translations.");
@@ -581,12 +582,13 @@
         throw new TypeError("Expanded sites require sourceStructureId, modelId, and siteId.");
       }
       translations.forEach((translation) => operations.forEach((operation) => {
-        const candidate = candidateFor(site, operation, translation, Boolean(wrap));
-        const key = partitionKey(site, candidate);
+        const candidate = candidateFor(site, operation, translation, Boolean(wrap), displayOffsets);
+        const key = partitionKey(site, candidate, displayOffsets);
         const groups = partitions.get(key) || [];
-        const existing = groups.find((group) => vectorEqual(group.position, candidate.canonicalFractionalPosition));
+        const position = displayOffsets ? candidate.fractionalPosition : candidate.canonicalFractionalPosition;
+        const existing = groups.find((group) => vectorEqual(group.position, position));
         if (existing) existing.candidates.push(candidate);
-        else groups.push({ site, position: candidate.canonicalFractionalPosition, candidates: [candidate] });
+        else groups.push({ site, position, candidates: [candidate] });
         partitions.set(key, groups);
       }));
     });
@@ -631,7 +633,7 @@
     return error;
   }
 
-  async function expandSitesCooperatively({ sites, operations, requestedTranslations, wrap = false, signal, now = () => Date.now(), yieldControl = () => new Promise((resolve) => setTimeout(resolve, 0)), sliceMs = 8 }) {
+  async function expandSitesCooperatively({ sites, operations, requestedTranslations, wrap = false, displayOffsets, signal, now = () => Date.now(), yieldControl = () => new Promise((resolve) => setTimeout(resolve, 0)), sliceMs = 8 }) {
     if (!Array.isArray(sites) || !sites.length) throw new TypeError("Crystal expansion requires source sites.");
     if (!Array.isArray(operations) || !operations.length) throw new TypeError("Crystal expansion requires symmetry operations.");
     if (!Array.isArray(requestedTranslations) || !requestedTranslations.length) throw new TypeError("Crystal expansion requires requested translations.");
@@ -647,12 +649,13 @@
         throw new TypeError("Expanded sites require sourceStructureId, modelId, and siteId.");
       }
       for (const translation of translations) for (const operation of operations) {
-        const candidate = candidateFor(site, operation, translation, Boolean(wrap));
-        const key = partitionKey(site, candidate);
+        const candidate = candidateFor(site, operation, translation, Boolean(wrap), displayOffsets);
+        const key = partitionKey(site, candidate, displayOffsets);
         const groups = partitions.get(key) || [];
-        const existing = groups.find((group) => vectorEqual(group.position, candidate.canonicalFractionalPosition));
+        const position = displayOffsets ? candidate.fractionalPosition : candidate.canonicalFractionalPosition;
+        const existing = groups.find((group) => vectorEqual(group.position, position));
         if (existing) existing.candidates.push(candidate);
-        else groups.push({ site, position: candidate.canonicalFractionalPosition, candidates: [candidate] });
+        else groups.push({ site, position, candidates: [candidate] });
         partitions.set(key, groups);
         await cooperate();
       }
@@ -971,10 +974,182 @@
   return { buildPackingScene, componentIndex, rankPackingComponents };
 });
 ;
+/* web/structure-viewer/crystal/cell-molecules.js */
+(function (root, factory) {
+  const dependencies = typeof module === "object" && module.exports
+    ? { ...require("./unit-cell.js"), ...require("./symmetry.js"), ...require("./expander.js") }
+    : root.StructureViewerCrystal;
+  const api = factory(dependencies);
+  if (typeof module === "object" && module.exports) module.exports = api;
+  if (root) root.StructureViewerCrystal = Object.assign(root.StructureViewerCrystal || {}, api);
+})(typeof window !== "undefined" ? window : globalThis, function (dependencies) {
+  "use strict";
+  const key = (site, operation) => JSON.stringify([site, operation]);
+  const add = (a,b) => a.map((v,i)=>v+b[i]);
+  const subtract = (a,b) => a.map((v,i)=>v-b[i]);
+  const check = (signal) => { if (signal?.aborted) { const error=new Error("Cell preparation cancelled."); error.name="AbortError"; throw error; } };
+
+  function nearestTranslation(cell, begin, end) {
+    const delta=subtract(end,begin), columns=dependencies.cellEdges(cell), q=[], r=Array.from({length:3},()=>[0,0,0]);
+    const dot=(a,b)=>a.reduce((sum,v,i)=>sum+v*b[i],0);
+    // QR gives the true lattice metric. Sphere enumeration finds the closest
+    // integer image even for non-reduced skew cells; a fixed 27-image box does not.
+    for(let j=0;j<3;j++) {
+      let vector=[...columns[j]];
+      for(let i=0;i<j;i++) { r[i][j]=dot(q[i],vector);vector=vector.map((v,k)=>v-r[i][j]*q[i][k]); }
+      r[j][j]=Math.hypot(...vector);q.push(vector.map(v=>v/r[j][j]));
+    }
+    const candidate=[0,0,0];
+    const tail=(i)=>r[i].reduce((sum,v,j)=>j>i?sum+v*(delta[j]+candidate[j]):sum,0);
+    for(let i=2;i>=0;i--) candidate[i]=Math.round(-delta[i]-tail(i)/r[i][i]);
+    let best=[...candidate], distance=r.reduce((sum,row,i)=>sum+(row.reduce((total,v,j)=>total+v*(delta[j]+candidate[j]),0))**2,0);
+    function search(i,partial) {
+      if(i<0) { if(partial<distance-1e-12) { distance=partial;best=[...candidate]; } return; }
+      const other=tail(i), center=-delta[i]-other/r[i][i], radius=Math.sqrt(Math.max(0,distance-partial+1e-12))/r[i][i];
+      const min=Math.ceil(center-radius), max=Math.floor(center+radius);
+      if(!Number.isSafeInteger(min)||!Number.isSafeInteger(max)) throw new RangeError("Lattice image exceeds safe integer coordinates.");
+      const middle=Math.round(center);
+      for(let step=0;step<=Math.max(middle-min,max-middle);step++) {
+        for(const n of step===0?[middle]:[middle-step,middle+step]) {
+          if(n<min||n>max) continue;
+          candidate[i]=n; const term=r[i][i]*(delta[i]+n)+other;
+          if(partial+term*term<=distance+1e-12) search(i-1,partial+term*term);
+        }
+      }
+    }
+    search(2,0);
+    return best;
+  }
+
+  function canonicalTemplateOptions(sites,operations,signal) {
+    const displayOffsets=new Map();
+    for(const site of sites) for(const operation of operations) {
+      check(signal);
+      const position=dependencies.applySymmetryFloat(operation,site.fractional.frac.map(Number));
+      displayOffsets.set(key(site.siteId,operation.operationId),position.map(value=>-Math.floor(value+1e-6)));
+    }
+    return {sites,operations,requestedTranslations:[[0,0,0]],wrap:true,displayOffsets};
+  }
+
+  function* prepareCellMoleculesSteps(sites, bonds, operations, cell, signal, suppliedTemplate) {
+    check(signal);
+    const template=suppliedTemplate || dependencies.expandSites(canonicalTemplateOptions(sites,operations,signal));
+    const byKey=new Map(), byId=new Map(template.atoms.map(a=>[a.renderAtomId,a]));
+    const neighbors=new Map(template.atoms.map(a=>[a.renderAtomId,[]]));
+    template.atoms.forEach(atom=>atom.contributors.forEach(entry=>byKey.set(key(atom.identity.siteId,entry.symmetryOperationId),atom)));
+    const operationById=new Map(operations.map(o=>[o.operationId,o]));
+    const identity=operationById.get("symop:x,y,z");
+    const edges=[];
+    for(const bond of bonds) for(const global of operations) {
+      check(signal);
+      yield;
+      let beginImage, endImage;
+      if(bond.beginImage||bond.endImage) {
+        const defaultImage={symmetryOperationId:identity?.operationId,cellTranslation:[0,0,0]};
+        const begin=bond.beginImage||defaultImage, end=bond.endImage||defaultImage;
+        const bo=operationById.get(begin.symmetryOperationId), eo=operationById.get(end.symmetryOperationId);
+        if(!bo||!eo) continue;
+        beginImage=dependencies.transformPeriodicImage(global,bo,begin.cellTranslation,operations);
+        endImage=dependencies.transformPeriodicImage(global,eo,end.cellTranslation,operations);
+      } else {
+        beginImage={symmetryOperationId:global.operationId,cellTranslation:[0,0,0]};
+        endImage={symmetryOperationId:global.operationId,cellTranslation:[0,0,0]};
+      }
+      const begin=byKey.get(key(bond.beginSiteId,beginImage.symmetryOperationId));
+      const end=byKey.get(key(bond.endSiteId,endImage.symmetryOperationId));
+      if(!begin||!end) continue;
+      const beginAdjustment=begin.contributors.find(c=>c.symmetryOperationId===beginImage.symmetryOperationId).displayWrapAdjustment;
+      const endAdjustment=end.contributors.find(c=>c.symmetryOperationId===endImage.symmetryOperationId).displayWrapAdjustment;
+      const delta=bond.beginImage||bond.endImage ? add(subtract(endImage.cellTranslation,beginImage.cellTranslation),subtract(beginAdjustment,endAdjustment))
+        : nearestTranslation(cell,begin.fractionalPosition,end.fractionalPosition);
+      edges.push({begin,end,delta,bond});
+      neighbors.get(begin.renderAtomId).push({id:end.renderAtomId,delta});
+      neighbors.get(end.renderAtomId).push({id:begin.renderAtomId,delta:delta.map(v=>-v)});
+    }
+    const offsets=new Map(), displayOffsets=new Map(), networkIds=new Set();
+    const remaining=new Set(byId.keys());
+    for(const seed of byId.keys()) {
+      if(!remaining.delete(seed)) continue;
+      offsets.set(seed,[0,0,0]); const queue=[seed]; let network=false;
+      for(let i=0;i<queue.length;i++) {
+        check(signal);
+        yield;
+        const current=queue[i];
+        for(const neighbor of neighbors.get(current)) {
+          const next=add(offsets.get(current),neighbor.delta);
+          if(remaining.delete(neighbor.id)) { offsets.set(neighbor.id,next);queue.push(neighbor.id); }
+          else if(subtract(offsets.get(neighbor.id),next).some(v=>v!==0)) network=true;
+        }
+      }
+      // A finite molecule belongs to the cell containing its completed fractional
+      // centroid. Completion may extend beyond its owner's cell frame.
+      const centroid=[0,1,2].map(axis=>queue.reduce((sum,id)=>sum+byId.get(id).fractionalPosition[axis]+offsets.get(id)[axis],0)/queue.length);
+      const shift=centroid.map(v=>-Math.floor(v+1e-6));
+      for(const id of queue) {
+        const atom=byId.get(id);
+        const offset=network ? atom.fractionalPosition.map(v=>-Math.floor(v+1e-6)) : add(offsets.get(id),shift);
+        offsets.set(id,offset);
+        if(network) networkIds.add(id);
+        atom.contributors.forEach(entry=>displayOffsets.set(key(atom.identity.siteId,entry.symmetryOperationId),add(offset,entry.displayWrapAdjustment)));
+      }
+    }
+    return {template,edges,offsets,displayOffsets,networkIds};
+  }
+
+  function* completedCellBondSteps(atoms, prepared, signal) {
+    const byImage=new Map();
+    const bySite=new Map();
+    const imageKey=(site,operation,translation)=>JSON.stringify([site,operation,...translation]);
+    atoms.forEach(atom=>atom.contributors.forEach(c=>byImage.set(imageKey(atom.identity.siteId,c.symmetryOperationId,c.requestedCellTranslation),atom)));
+    atoms.forEach(atom=>{ const group=bySite.get(atom.identity.siteId)||[];group.push(atom);bySite.set(atom.identity.siteId,group); });
+    const bonds=[],seen=new Set();
+    for(const edge of prepared.edges) {
+      const beginOps=edge.begin.contributors.map(c=>c.symmetryOperationId);
+      const endOp=edge.end.contributors[0].symmetryOperationId;
+      const difference=add(edge.delta,subtract(prepared.offsets.get(edge.begin.renderAtomId),prepared.offsets.get(edge.end.renderAtomId)));
+      for(const begin of bySite.get(edge.begin.identity.siteId)||[]) {
+        check(signal);
+        yield;
+        const contributor=begin.contributors.find(c=>beginOps.includes(c.symmetryOperationId));
+        if(!contributor) continue;
+        const target=add(contributor.requestedCellTranslation,difference);
+        const end=byImage.get(imageKey(edge.end.identity.siteId,endOp,target));
+        if(!end||end.renderAtomId===begin.renderAtomId) continue;
+        const endpoints=[begin.renderAtomId,end.renderAtomId].sort(), id=JSON.stringify(endpoints);
+        if(seen.has(id)) continue;
+        seen.add(id);
+        bonds.push({renderBondId:`periodic-bond:${bonds.length}`,beginRenderAtomId:endpoints[0],endRenderAtomId:endpoints[1],order:edge.bond.order,...(edge.bond.aromatic?{aromatic:true}:{}),provenance:"periodic"});
+      }
+    }
+    return bonds;
+  }
+  function finish(steps) {
+    let next=steps.next(); while(!next.done) next=steps.next(); return next.value;
+  }
+  async function cooperate(steps, options={}) {
+    const now=options.now||(()=>Date.now()), yieldControl=options.yieldControl||(()=>new Promise(resolve=>setTimeout(resolve,0)));
+    let start=now(), next=steps.next();
+    while(!next.done) {
+      check(options.signal);
+      if(now()-start>=8) { await yieldControl();check(options.signal);start=now(); }
+      next=steps.next();
+    }
+    return next.value;
+  }
+  const prepareCellMolecules=(sites,bonds,operations,cell,signal)=>finish(prepareCellMoleculesSteps(sites,bonds,operations,cell,signal));
+  const completedCellBonds=(atoms,prepared,signal)=>finish(completedCellBondSteps(atoms,prepared,signal));
+  async function prepareCellMoleculesCooperatively(sites,bonds,operations,cell,options) {
+    const template=await dependencies.expandSitesCooperatively({...canonicalTemplateOptions(sites,operations,options.signal),...options});
+    return cooperate(prepareCellMoleculesSteps(sites,bonds,operations,cell,options.signal,template),options);
+  }
+  const completedCellBondsCooperatively=(atoms,prepared,options)=>cooperate(completedCellBondSteps(atoms,prepared,options.signal),options);
+  return {prepareCellMolecules,completedCellBonds,prepareCellMoleculesCooperatively,completedCellBondsCooperatively};
+});
+;
 /* web/structure-viewer/crystal/scene-builder.js */
 (function (root, factory) {
   const crystal = typeof module === "object" && module.exports
-    ? { ...require("./unit-cell.js"), ...require("./symmetry.js"), ...require("./disorder.js"), ...require("./expander.js"), ...require("./packing.js") }
+    ? { ...require("./unit-cell.js"), ...require("./symmetry.js"), ...require("./disorder.js"), ...require("./expander.js"), ...require("./packing.js"), ...require("./cell-molecules.js") }
     : root.StructureViewerCrystal;
   const core = typeof module === "object" && module.exports
     ? { ...require("../core/atom-identity.js"), ...require("../core/validators.js"), ...require("../core/constants.js") }
@@ -1096,6 +1271,7 @@
       operations: source.crystal.symmetryOperations,
       requestedTranslations: [[0, 0, 0]],
       wrap: settings.wrapFractionalCoordinates,
+      displayOffsets: settings.cellMolecules?.displayOffsets,
     });
     return {
       atoms: expanded.atoms.map((atom) => ({
@@ -1136,7 +1312,7 @@
     const projectedBonds = model.bonds.length * operationCount * requestedTranslations.length;
     if (projectedAtoms > core.LIMITS.derivedAtoms) throw new RangeError(`Projected derived atom count ${projectedAtoms} exceeds the ${core.LIMITS.derivedAtoms}-atom limit.`);
     if (projectedBonds > core.LIMITS.derivedBonds) throw new RangeError(`Projected derived bond count ${projectedBonds} exceeds the ${core.LIMITS.derivedBonds}-bond limit.`);
-    const expanded = crystal.expandSites({ sites, operations: source.crystal.symmetryOperations, requestedTranslations, wrap: settings.wrapFractionalCoordinates });
+    const expanded = crystal.expandSites({ sites, operations: source.crystal.symmetryOperations, requestedTranslations, wrap: settings.wrapFractionalCoordinates, displayOffsets: settings.cellMolecules?.displayOffsets });
     return {
       atoms: expanded.atoms.map((atom) => ({ ...atom, position: [...crystal.fractionalToCartesian(source.crystal.cell, atom.fractionalPosition)] })),
       atomGeneration: expanded.atomGeneration,
@@ -1151,6 +1327,7 @@
     if (projectedBonds > core.LIMITS.derivedBonds) throw new RangeError(`Projected derived bond count ${projectedBonds} exceeds the ${core.LIMITS.derivedBonds}-bond limit.`);
     const expanded = await crystal.expandSitesCooperatively({
       sites, operations: source.crystal.symmetryOperations, requestedTranslations, wrap: settings.wrapFractionalCoordinates,
+      displayOffsets: settings.cellMolecules?.displayOffsets,
       signal: options.signal, now: options.now, yieldControl: options.yieldControl, sliceMs: core.LIMITS.mainThreadSliceMs,
     });
     const now = options.now || (() => Date.now());
@@ -1345,7 +1522,7 @@
     return bonds;
   }
 
-  function crystalScene(source, model, content, projection, bonds, translations = [[0, 0, 0]]) {
+  function crystalScene(source, model, content, projection, bonds, translations = [[0, 0, 0]], cellMolecules) {
     const scene = {
       schema: "rt-render-scene/1", sceneId: `scene:${source.structureId}:${model.modelId}:${content}`,
       sourceStructureId: source.structureId, sourceModelId: model.modelId, atoms: projection.atoms, bonds,
@@ -1356,21 +1533,28 @@
         cellEdges: cellEdgeSegments(source.crystal.cell),
         latticeTranslations: translations.map((translation) => [...translation]),
         latticeSegments: latticeSegments(source.crystal.cell, translations),
+        ...(cellMolecules ? { moleculeOwnership: "completed-fractional-centroid", periodicNetwork: cellMolecules.networkIds.size > 0 } : {}),
       },
       warnings: [...source.warnings],
     };
+    if (cellMolecules?.networkIds.size) scene.warnings.push({code:"periodic-network",message:"An infinite periodic network cannot be completed as a finite molecule; its bonds are clipped to the specified cell range."});
     core.validateRenderScene(scene);
     return deepFreeze(scene);
   }
 
-  function finalizeCrystalScene(source, model, content, projection, translations) {
-    const bonds = content === "asymmetric-unit" ? asymmetricBonds(projection.atoms, model.bonds) : periodicBonds(projection.atoms, model.bonds, {
+  function finalizeCrystalScene(source, model, content, projection, translations, cellMolecules, signal) {
+    const bonds = cellMolecules ? crystal.completedCellBonds(projection.atoms, cellMolecules, signal) : content === "asymmetric-unit" ? asymmetricBonds(projection.atoms, model.bonds) : periodicBonds(projection.atoms, model.bonds, {
       crossBoundary: content === "supercell", operations: source.crystal.symmetryOperations,
     });
-    return crystalScene(source, model, content, projection, bonds, translations);
+    return crystalScene(source, model, content, projection, bonds, translations, cellMolecules);
   }
 
-  async function finalizeCrystalSceneCooperatively(source, model, content, projection, options, translations) {
+  async function finalizeCrystalSceneCooperatively(source, model, content, projection, options, translations, cellMolecules) {
+    if (cellMolecules) {
+      const bonds = await crystal.completedCellBondsCooperatively(projection.atoms, cellMolecules, options);
+      throwIfAborted(options.signal);
+      return crystalScene(source, model, content, projection, bonds, translations, cellMolecules);
+    }
     const bonds = await periodicBondsCooperatively(projection.atoms, model.bonds, {
       ...options, crossBoundary: content === "supercell", operations: source.crystal.symmetryOperations,
     });
@@ -1383,25 +1567,40 @@
     if (!source || source.schema !== "rt-source-structure/1" || !source.crystal) throw new TypeError("A validated crystal SourceStructure is required.");
     if (!definition || definition.mode !== "crystal" || !definition.crystal) throw new TypeError("A crystal SceneDefinition is required.");
     const content = definition.crystal.content;
-    if (content === "packing") return crystal.buildPackingScene(source, definition, options);
-    if (!["asymmetric-unit", "unit-cell", "symmetry-mates", "supercell"].includes(content)) throw new TypeError(`Crystal scene content '${content}' is not supported.`);
+    const cellPacking = content === "packing" && definition.crystal.packingMode === "cell-range";
+    if (content === "packing" && !cellPacking) return crystal.buildPackingScene(source, definition, options);
+    if (!["asymmetric-unit", "unit-cell", "symmetry-mates", "supercell"].includes(content) && !cellPacking) throw new TypeError(`Crystal scene content '${content}' is not supported.`);
     crystal.validateCell(source.crystal.cell);
     const model = source.models.find((candidate) => candidate.modelId === definition.modelId);
     if (!model) throw new Error(`Unknown crystal model '${definition.modelId}'.`);
     const sites = selectedSites(source, model, definition.crystal);
-    const translations = ["symmetry-mates", "supercell"].includes(content) ? enumerateTranslations(definition.crystal.replication, options.signal) : [[0, 0, 0]];
+    const translations = ["symmetry-mates", "supercell"].includes(content) || cellPacking ? enumerateTranslations(definition.crystal.replication, options.signal) : [[0, 0, 0]];
+    const lattice = ["supercell", "symmetry-mates"].includes(content) || cellPacking ? translations : [[0, 0, 0]];
     const projectedAtoms = sites.length * source.crystal.symmetryOperations.length * translations.length;
-    if (content !== "asymmetric-unit" && (options.signal || options.yieldControl || projectedAtoms >= 4096)) {
-      return expandedAtomsCooperatively(source, model, sites, definition.crystal, translations, options)
-        .then((projection) => { throwIfAborted(options.signal); return finalizeCrystalSceneCooperatively(source, model, content, projection, options, content === "supercell" ? translations : [[0, 0, 0]]); });
+    const projectedBonds = model.bonds.length * source.crystal.symmetryOperations.length * translations.length;
+    const cooperative = content !== "asymmetric-unit" && (options.signal || options.yieldControl || projectedAtoms >= 4096);
+    if(content !== "asymmetric-unit" && (projectedAtoms > core.LIMITS.derivedAtoms || projectedBonds > core.LIMITS.derivedBonds)) {
+      const error=new RangeError("Projected crystal atoms or bonds exceed the scene limit.");
+      if(cooperative) return Promise.reject(error);
+      throw error;
+    }
+    const needsCompletion = (["unit-cell", "supercell"].includes(content) || cellPacking) && definition.crystal.wrapFractionalCoordinates;
+    const renderWith = (cellMolecules) => {
+    const settings = { ...definition.crystal, cellMolecules };
+    if (cooperative) {
+      return expandedAtomsCooperatively(source, model, sites, settings, translations, options)
+        .then((projection) => { throwIfAborted(options.signal); return finalizeCrystalSceneCooperatively(source, model, content, projection, options, lattice, cellMolecules); });
     }
     const projection = content === "asymmetric-unit"
       ? asymmetricAtoms(source, model, sites)
       : content === "unit-cell"
-        ? unitCellAtoms(source, model, sites, definition.crystal)
-        : expandedAtoms(source, model, sites, definition.crystal, translations);
+        ? unitCellAtoms(source, model, sites, settings)
+        : expandedAtoms(source, model, sites, settings, translations);
     throwIfAborted(options.signal);
-    return finalizeCrystalScene(source, model, content, projection, content === "supercell" ? translations : [[0, 0, 0]]);
+    return finalizeCrystalScene(source, model, content, projection, lattice, cellMolecules, options.signal);
+    };
+    if(needsCompletion && cooperative) return crystal.prepareCellMoleculesCooperatively(sites,model.bonds,source.crystal.symmetryOperations,source.crystal.cell,options).then(renderWith);
+    return renderWith(needsCompletion ? crystal.prepareCellMolecules(sites,model.bonds,source.crystal.symmetryOperations,source.crystal.cell,options.signal) : null);
   }
 
   return { buildCrystalScene, cellEdgeSegments, latticeSegments };
@@ -3997,7 +4196,7 @@
   const CRYSTAL_CONTENT = new Set(["asymmetric-unit", "unit-cell", "symmetry-mates", "packing", "supercell"]);
   const DISORDER_MODES = new Set(["all", "highest-occupancy", "group"]);
   const HYDROGEN_FILTERS = new Set(["all", "hide", "polar-only"]);
-  const PACKING_MODES = new Set(["molecule-count", "radius"]);
+  const PACKING_MODES = new Set(["molecule-count", "radius", "cell-range"]);
   const PACKING_FIELDS = Object.freeze(["packingMode", "packingMoleculeCount", "packingRadiusAngstrom"]);
 
   function requiredString(value, path) {
@@ -4734,6 +4933,7 @@
     return {
       modelId: source.models[0].modelId,
       mode: source.structureType === "crystal" ? "crystal" : source.structureType === "macromolecule" ? "macromolecular" : "molecular",
+      ...(source.structureType === "crystal" ? { crystal: { content: "unit-cell", wrapFractionalCoordinates: true } } : {}),
     };
   }
 
@@ -5158,7 +5358,7 @@
     if (Array.isArray(matrix) && matrix.length === 16) {
       return unitCellEdges({
         origin: [0, 0, 0],
-        vectors: [[matrix[0], matrix[3], matrix[6]], [matrix[1], matrix[4], matrix[7]], [matrix[2], matrix[5], matrix[8]]],
+        vectors: [[matrix[0], matrix[4], matrix[8]], [matrix[1], matrix[5], matrix[9]], [matrix[2], matrix[6], matrix[10]]],
       });
     }
     return unitCellEdges(scene?.unitCell);
@@ -5310,7 +5510,6 @@
         }
 
         function addMeasurements() {
-          addUnitCell();
           if (!scene) return;
           measurements.forEach((item) => {
             if (item?.definition?.visible === false) return;
@@ -5323,13 +5522,6 @@
                 color: dependencies.VISUAL_POLICY.overlay.measurement.lineColor, dashed: true, linewidth: dependencies.VISUAL_POLICY.overlay.measurement.lineWidth,
               });
             }
-            const center = [0, 1, 2].map((axis) => atoms.reduce((sum, atom) => sum + atom.position[axis], 0) / atoms.length);
-            const suffix = item.unit === "angstrom" ? " Å" : "°";
-            viewer.addLabel(`${Number(item.value).toFixed(item.unit === "angstrom" ? 3 : 2)}${suffix}`, {
-              position: { x: center[0], y: center[1], z: center[2] }, ...dependencies.VISUAL_POLICY.overlay.measurement, inFront: true,
-            });
-            labelCount += 1;
-            diagnostics.activeLabels += 1;
           });
         }
 
@@ -5337,6 +5529,7 @@
           clearLabels();
           viewer.removeAllShapes();
           addLabels();
+          addUnitCell();
           addMeasurements();
         }
 
@@ -8120,6 +8313,13 @@
   "use strict";
 
   const labels = {
+    "Cell range": "セル範囲", "Molecule count (advanced)": "分子数（詳細）", "Radius (advanced)": "半径（詳細）",
+    "Cell translation ranges": "セル並進の整数範囲",
+    "Cell expansion (a / b / c)": "結晶軸 a / b / c のセル拡張",
+    "Cells contain complete molecules whose fractional centroid lies inside the range. Completion can extend outside the frame.": "完成した分子の分数座標重心を所属セルの基準にします。分子を切らないため、原子が枠外へ出る場合があります。",
+    "add +a layer": "+aに1セル追加", "add −a layer": "−aに1セル追加", "remove +a layer": "+a側を1セル縮小", "remove −a layer": "−a側を1セル縮小",
+    "add +b layer": "+bに1セル追加", "add −b layer": "−bに1セル追加", "remove +b layer": "+b側を1セル縮小", "remove −b layer": "−b側を1セル縮小",
+    "add +c layer": "+cに1セル追加", "add −c layer": "−cに1セル追加", "remove +c layer": "+c側を1セル縮小", "remove −c layer": "−c側を1セル縮小",
     "Open": "開く", "Labels": "原子番号", "Clear selection": "選択解除", "Reset view": "表示リセット",
     "Copy coordinates": "XYZコピー", "Export XYZ": "XYZ保存", "Share": "Web共有", "Open in New Window": "別ウィンドウ",
     "Show XYZ": "XYZ表示", "Full XYZ": "全XYZ座標", "Ball & stick": "球と棒", "Stick": "棒", "Spacefill": "空間充填",
@@ -8299,14 +8499,14 @@
     const exportMode = state.exportMode || "source-asymmetric-unit";
     if (!EXPORT_MODES.has(exportMode)) throw new TypeError(`Unsupported crystal export mode '${exportMode}'.`);
     const crystal = {
-      content: state.content || "asymmetric-unit",
+      content: state.content || "unit-cell",
       disorderMode: state.disorderMode || "all",
       minimumOccupancy: state.minimumOccupancy === undefined ? 0 : Number(state.minimumOccupancy),
       replication: state.replication || { a: [0, 0], b: [0, 0], c: [0, 0] },
-      wrapFractionalCoordinates: state.wrapFractionalCoordinates === true,
+      wrapFractionalCoordinates: state.wrapFractionalCoordinates === undefined ? true : state.wrapFractionalCoordinates === true,
     };
     if (crystal.content === "packing") {
-      crystal.packingMode = state.packingMode || "molecule-count";
+      crystal.packingMode = state.packingMode || "cell-range";
       crystal.packingMoleculeCount = state.packingMoleculeCount === undefined ? 10 : Number(state.packingMoleculeCount);
       crystal.packingRadiusAngstrom = state.packingRadiusAngstrom === undefined ? 8 : Number(state.packingRadiusAngstrom);
     }
@@ -8329,7 +8529,7 @@
       packing,
       packingCount: packing && crystal.packingMode === "molecule-count",
       packingRadius: packing && crystal.packingMode === "radius",
-      supercell: crystal.content === "supercell",
+      supercell: crystal.content === "supercell" || (packing && crystal.packingMode === "cell-range"),
     });
   }
 
@@ -8409,7 +8609,7 @@
     const disorderAssembly = createElement(document, "input", { type: "text", "aria-label": "Disorder assembly" });
     const disorderGroup = createElement(document, "input", { type: "text", "aria-label": "Disorder group" });
     const packingMode = createElement(document, "select", { "aria-label": "Packing mode" });
-    [["molecule-count", "Molecule count"], ["radius", "Radius"]].forEach(([value, label]) => packingMode.append(option(document, value, label)));
+    [["cell-range", "Cell range"], ["molecule-count", "Molecule count (advanced)"], ["radius", "Radius (advanced)"]].forEach(([value, label]) => packingMode.append(option(document, value, label)));
     const moleculeCount = createElement(document, "input", { type: "number", min: "1", step: "1", "aria-label": "Packing molecule count" });
     const radius = createElement(document, "input", { type: "number", min: "3", max: "30", step: "0.5", "aria-label": "Packing radius in Angstrom" });
     const exportMode = createElement(document, "select", { "aria-label": "XYZ export mode" });
@@ -8422,28 +8622,34 @@
     fields.append(labeledControl(document, "Scene", content), labeledControl(document, "Model", model), labeledControl(document, "Disorder", disorder), labeledControl(document, "Min. occupancy", occupancy), assemblyField, groupField, packingModeField, moleculeCountField, radiusField, labeledControl(document, "XYZ export", exportMode));
 
     const supercell = createElement(document, "fieldset", { className: "crystal-supercell" });
-    supercell.append(createElement(document, "legend", {}, "Supercell"));
+    supercell.append(createElement(document, "legend", {}, "Cell expansion (a / b / c)"));
     const presetOne = createElement(document, "button", { type: "button", className: "outlined-action", "data-size": "1" }, "1×1×1");
     const presetTwo = createElement(document, "button", { type: "button", className: "outlined-action", "data-size": "2" }, "2×2×2");
-    const sizeInputs = {};
     supercell.append(presetOne, presetTwo);
-    [["x", "X"], ["y", "Y"], ["z", "Z"]].forEach(([axis, label]) => {
-      const input = createElement(document, "input", { type: "number", min: "1", max: String(dependencies.LIMITS.replicationAxisMax + 1), step: "1", "aria-label": `Supercell ${label} size` });
-      sizeInputs[axis] = input;
-      supercell.append(labeledControl(document, label, input));
-    });
 
     const replication = createElement(document, "fieldset", { className: "crystal-replication" });
-    replication.append(createElement(document, "legend", {}, "Symmetry-mate ranges"));
+    replication.append(createElement(document, "legend", {}, "Cell translation ranges"));
     const rangeInputs = {};
+    const rangeSummary = createElement(document, "output", { className: "crystal-range-summary", "aria-live": "polite" });
+    const ownership = createElement(document,"p",{className:"crystal-ownership"},"Cells contain complete molecules whose fractional centroid lies inside the range. Completion can extend outside the frame.");
+    ownership.setAttribute("data-viewer-text",ownership.textContent);
+    const directionButtons = [];
     ["a", "b", "c"].forEach((axis) => {
-      const row = createElement(document, "label", { className: "crystal-range" });
+      const row = createElement(document, "div", { className: "crystal-range" });
       row.append(createElement(document, "span", {}, axis));
       rangeInputs[axis] = ["min", "max"].map((edge) => {
         const input = createElement(document, "input", { type: "number", min: "-10", max: "10", step: "1", "aria-label": `${axis} ${edge}` });
         row.append(input); return input;
       });
       replication.append(row);
+      ["negative", "positive"].forEach((side) => {
+        const sign=side==="positive"?"+":"−";
+        ["add","remove"].forEach((action)=>{
+          const button=createElement(document,"button",{type:"button",className:"outlined-action", "aria-label":`${action} ${sign}${axis} layer`},`${action==="add"?"+":"−"} (${sign}${axis})`);
+          directionButtons.push({button,axis,side,action});
+          row.append(button);
+        });
+      });
     });
 
     const display = createElement(document, "fieldset", { className: "crystal-display" });
@@ -8465,16 +8671,13 @@
     const cancel = createElement(document, "button", { type: "button", className: "outlined-action crystal-cancel" }, "Cancel");
     cancel.hidden = true;
     feedback.append(warnings, progress, cancel);
-    panel.append(fields, supercell, replication, display, metadata, exportSummary, feedback);
+    panel.append(fields, supercell, replication, rangeSummary, ownership, display, metadata, exportSummary, feedback);
     container.append(panel);
 
     function readState() {
       const ranges = {};
       ["a", "b", "c"].forEach((axis) => { ranges[axis] = rangeInputs[axis].map((input) => Number(input.value)); });
-      const replication = content.value === "supercell"
-        ? dependencies.replicationFromSize({ x: Number(sizeInputs.x.value), y: Number(sizeInputs.y.value), z: Number(sizeInputs.z.value) })
-        : ranges;
-      return { modelId: model.value, content: content.value, disorderMode: disorder.value, disorderAssembly: disorderAssembly.value.trim(), disorderGroup: disorderGroup.value.trim(), minimumOccupancy: Number(occupancy.value), packingMode: packingMode.value, packingMoleculeCount: Number(moleculeCount.value), packingRadiusAngstrom: Number(radius.value), replication, exportMode: exportMode.value, showUnitCell: unitCell.checked };
+      return { modelId: model.value, content: content.value, disorderMode: disorder.value, disorderAssembly: disorderAssembly.value.trim(), disorderGroup: disorderGroup.value.trim(), minimumOccupancy: Number(occupancy.value), packingMode: packingMode.value, packingMoleculeCount: Number(moleculeCount.value), packingRadiusAngstrom: Number(radius.value), replication: ranges, wrapFractionalCoordinates: state.wrapFractionalCoordinates, exportMode: exportMode.value, showUnitCell: unitCell.checked };
     }
 
     function reflect(next) {
@@ -8486,7 +8689,7 @@
       disorderAssembly.value = normalized.definition.crystal.disorderAssembly || "";
       disorderGroup.value = normalized.definition.crystal.disorderGroup || "";
       occupancy.value = String(normalized.definition.crystal.minimumOccupancy);
-      packingMode.value = normalized.definition.crystal.packingMode || "molecule-count";
+      packingMode.value = normalized.definition.crystal.packingMode || "cell-range";
       moleculeCount.value = String(normalized.definition.crystal.packingMoleculeCount ?? 10);
       radius.value = String(normalized.definition.crystal.packingRadiusAngstrom ?? 8);
       exportMode.value = normalized.exportMode;
@@ -8497,11 +8700,17 @@
       moleculeCountField.hidden = !visibility.packingCount;
       radiusField.hidden = !visibility.packingRadius;
       supercell.hidden = !visibility.supercell;
-      const size = dependencies.sizeFromReplication(normalized.definition.crystal.replication);
-      Object.entries(size).forEach(([axis, value]) => { sizeInputs[axis].value = String(value); });
+      const ranges=normalized.definition.crystal.replication;
+      rangeSummary.textContent = ["a","b","c"].map(axis=>`${axis}=[${ranges[axis].join(",")}]`).join("; ") + ` · ${["a","b","c"].map(axis=>ranges[axis][1]-ranges[axis][0]+1).join("×")}`;
+      directionButtons.forEach(({button,axis,side,action})=>{
+        const range=ranges[axis];
+        button.disabled=action==="remove" ? range[0]===range[1] : (side==="positive" ? range[1]>=dependencies.LIMITS.replicationAxisMax : range[0]<=dependencies.LIMITS.replicationAxisMin);
+      });
       assemblyField.hidden = normalized.definition.crystal.disorderMode !== "group";
       groupField.hidden = normalized.definition.crystal.disorderMode !== "group";
-      replication.hidden = normalized.definition.crystal.content !== "symmetry-mates";
+      replication.hidden = normalized.definition.crystal.content !== "symmetry-mates" && !visibility.supercell;
+      ownership.hidden = normalized.definition.crystal.wrapFractionalCoordinates !== true;
+      rangeSummary.hidden = !["unit-cell","supercell","symmetry-mates"].includes(normalized.definition.crystal.content) && !visibility.supercell;
       return normalized;
     }
 
@@ -8509,8 +8718,17 @@
       if (disposed) return;
       if (event?.target === unitCell) return;
       try {
+        if (event?.target === content && ["unit-cell","supercell","packing"].includes(content.value)) {
+          state.wrapFractionalCoordinates=true;
+          if(content.value==="unit-cell") ["a","b","c"].forEach(axis=>rangeInputs[axis].forEach(input=>{input.value="0";}));
+          if(content.value==="packing") {
+            packingMode.value="cell-range";
+            if(!state.visitedCellPacking) ["a","b","c"].forEach(axis=>rangeInputs[axis].forEach(input=>{input.value="0";}));
+            state.visitedCellPacking=true;
+          }
+        }
         const normalized = normalizeCrystalPanelState(source, readState());
-        state = { ...readState() };
+        state = { ...state, ...readState() };
         reflect(state);
         warnings.textContent = "";
         options.onChange?.(normalized);
@@ -8524,9 +8742,14 @@
       options.onUnitCellChange?.(unitCell.checked);
     });
     const applyPreset = (size) => {
-      Object.values(sizeInputs).forEach((input) => { input.value = String(size); });
+      ["a","b","c"].forEach(axis=>{rangeInputs[axis][0].value="0";rangeInputs[axis][1].value=String(size-1);});
       notify();
     };
+    directionButtons.forEach(({button,axis,side,action})=>button.addEventListener("click",()=>{
+      const index=side==="positive"?1:0;
+      rangeInputs[axis][index].value=String(Number(rangeInputs[axis][index].value)+(side==="positive"?1:-1)*(action==="add"?1:-1));
+      notify();
+    }));
     presetOne.addEventListener("click", () => applyPreset(1));
     presetTwo.addEventListener("click", () => applyPreset(2));
     hideMolecule.addEventListener("click", () => options.onHideSelected?.());

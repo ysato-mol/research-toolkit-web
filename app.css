@@ -65,7 +65,13 @@ button, select, textarea { font: inherit; letter-spacing: 0; }
 .crystal-field select, .crystal-field input, .crystal-range input { width: 100%; min-height: 34px; padding: 5px 8px; border: 1px solid var(--color-outline-strong); border-radius: 6px; background: var(--color-surface); color: var(--color-text); }
 .crystal-replication, .crystal-supercell, .crystal-display { grid-column: 1; display: flex; flex-wrap: wrap; align-items: end; gap: 7px; margin: 0; padding: 6px 8px 8px; border: 1px solid var(--color-outline); border-radius: 6px; }
 .crystal-replication legend, .crystal-supercell legend, .crystal-display legend { padding: 0 4px; color: var(--color-text-secondary); font-size: .68rem; font-weight: 750; }
-.crystal-range { display: grid; grid-template-columns: 14px repeat(2, minmax(56px, 1fr)); align-items: center; gap: 4px; }
+.crystal-range { display: grid; grid-template-columns: 14px repeat(4, minmax(0, 1fr)); align-items: center; gap: 4px; }
+.crystal-range input:nth-of-type(1) { grid-column: 2 / span 2; }
+.crystal-range input:nth-of-type(2) { grid-column: 4 / span 2; }
+.crystal-range button { min-height: 30px; padding: 3px 5px; font-size: .75rem; }
+.crystal-range button:nth-of-type(1) { grid-column: 2; }
+.crystal-range-summary { font-size: .8rem; font-weight: 650; overflow-wrap: anywhere; }
+.crystal-ownership { margin: 0; color: var(--color-text-secondary); font-size: .74rem; }
 .crystal-supercell .crystal-field { width: 64px; }
 .crystal-supercell button, .crystal-display button { min-height: 32px; padding: 4px 9px; white-space: nowrap; }
 .crystal-toggle { display: inline-flex; min-height: 32px; align-items: center; gap: 5px; color: var(--color-text-secondary); font-size: .74rem; font-weight: 700; white-space: nowrap; }
@@ -121,7 +127,7 @@ html[data-theme="dark"] .status-message { background: rgba(34, 34, 34, .96); }
   .style-control { min-width: 0; }
   .action-controls { margin-left: 0; }
   button { width: 100%; padding-inline: 8px; }
-  .crystal-panel { grid-template-columns: 1fr; }
+.crystal-panel { grid-template-columns: 1fr; }
   .crystal-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .crystal-metadata { grid-column: 1; grid-row: auto; }
   .crystal-replication, .crystal-supercell, .crystal-display { flex-wrap: wrap; }

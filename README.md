@@ -132,20 +132,28 @@ rotation and wheel/pinch zoom are provided by the bundled 3Dmol.js viewer.
 
 ## Crystal display controls
 
-Crystal scenes keep two different operations separate:
+New CIF imports show one unit cell with symmetry equivalents. Asymmetric-unit
+view remains an explicit option. Normal **Packing** starts with the same cell
+and reuses **Supercell** expansion. Add or remove one layer toward +a/-a,
++b/-b or +c/-c; the controls use crystallographic axes, including triclinic
+cells. Integer translation ranges are shown separately from geometric bounds:
+b=[-1,0] contains two cells and its frame extends from fractional -1 to +1.
+The 1 x 1 x 1 preset resets the ranges. Common lattice edges are drawn once.
 
-- **Packing** shows the nearest whole molecular components. Molecule-count
-  mode defaults to 10 components; radius mode remains available as an advanced
-  distance-based alternative.
-- **Supercell** replicates crystallographic cells independently along X, Y,
-  and Z. It defaults to `1 x 1 x 1`, includes a `2 x 2 x 2` preset, and uses
-  per-axis steppers for other sizes.
+Finite molecules belong to the cell containing their completed fractional
+centroid. Bond-connected atoms are completed together and can extend beyond
+the requested frame; these atoms do not count as additional requested cells.
+Periodic networks are clipped to the requested range and report that finite
+molecule completion is unavailable. Hiding molecules does not move the grid.
 
-The unit-cell control draws crystallographic a/b/c vectors, including
-translated frames for a supercell. Molecules can be hidden from the selected
-periodic component and restored without changing source atoms or scientific
-share identity. Crystal display state is stored in share v3 view settings;
-expanded scene atoms are never serialized.
+Molecule-count and radius packing remain advanced modes. Existing share v3
+settings, including explicit legacy count/radius and wrapping settings, are
+restored as saved. Ranges, grid visibility and hidden periodic components are
+stored in new shares without changing source content or atom identity.
+
+Distance, angle and dihedral values appear only in the Measurement panel.
+The 3D viewer retains selection/order labels and measurement helper lines;
+it does not generate numeric measurement labels, including for older shares.
 
 ## Build and acceptance
 
