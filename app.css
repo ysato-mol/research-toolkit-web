@@ -206,20 +206,18 @@ body[data-viewer-host="toolkit"] .sidebar-tabs button[aria-selected="true"] { ba
 .crystal-axes-indicator { position: absolute; top: 10px; left: 10px; width: 120px; height: 120px; z-index: 3; pointer-events: none; overflow: visible; }
 .crystal-camera-controls { margin: 8px 0; display: grid; gap: 7px; } .crystal-camera-buttons { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 4px; } .crystal-camera-buttons button { padding: 5px 4px; }
 #crystalInformationPage .crystal-metadata { max-height: none; overflow-y: visible; }
-.crystal-projection-toggle {
-  position: relative; justify-self: start; width: 174px; min-height: 34px;
-  padding: 5px 10px 5px 56px !important; border-radius: 17px !important;
+.crystal-projection-options {
+  display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 3px;
+  padding: 3px; border: 1px solid var(--color-outline); border-radius: 20px;
+  background: var(--color-surface-container);
+}
+.crystal-projection-options button {
+  min-width: 0; min-height: 32px; padding: 5px 8px !important;
+  border: 1px solid transparent !important; border-radius: 17px !important;
+  background: transparent !important; color: var(--color-text-secondary) !important;
+}
+.crystal-projection-options button[aria-pressed="true"] {
   background: var(--color-surface) !important; color: var(--color-primary) !important;
+  border-color: var(--color-primary) !important; box-shadow: 0 1px 3px rgba(0,0,0,.12);
 }
-.crystal-projection-toggle::before {
-  content: ""; position: absolute; left: 7px; top: 6px;
-  width: 40px; height: 20px; border-radius: 10px; background: var(--color-outline-strong);
-}
-.crystal-projection-toggle::after {
-  content: ""; position: absolute; left: 10px; top: 9px;
-  width: 14px; height: 14px; border-radius: 50%; background: #fff;
-  transition: transform 120ms ease;
-}
-.crystal-projection-toggle[aria-pressed="true"]::before { background: var(--color-primary); }
-.crystal-projection-toggle[aria-pressed="true"]::after { transform: translateX(20px); }
-@media (prefers-reduced-motion: reduce) { .crystal-projection-toggle::after { transition: none; } }
+.crystal-projection-options button:hover { color: var(--color-primary) !important; }
