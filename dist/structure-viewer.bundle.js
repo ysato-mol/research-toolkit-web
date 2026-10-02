@@ -225,6 +225,47 @@
   return { createUnitCell, fractionalToCartesian, cartesianToFractional, perpendicularHeights, cellEdges, validateCell };
 });
 ;
+/* web/structure-viewer/crystal/camera.js */
+(function(root,factory){
+  const crystal=typeof module==='object'&&module.exports?require('./unit-cell.js'):root.StructureViewerCrystal;
+  const api=factory(crystal);
+  if(typeof module==='object'&&module.exports)module.exports=api;
+  if(root)root.StructureViewerCrystal=Object.assign(root.StructureViewerCrystal||{},api);
+})(typeof window!=='undefined'?window:globalThis,function(crystal){
+  'use strict';
+  const DEFAULT_ROTATION_DEGREES=5;
+  const dot=(a,b)=>a.reduce((s,v,i)=>s+v*b[i],0);
+  const cross=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
+  function unit(vector){const length=Math.hypot(...vector);if(!Number.isFinite(length)||length<1e-12)throw new TypeError('Invalid camera direction.');return vector.map(v=>v/length);}
+  function axisVector(cell,axis){const index='abc'.indexOf(axis);if(index<0||axis.length!==1)throw new TypeError('Invalid crystal axis.');return unit(crystal.cellEdges(cell)[index]);}
+  function quaternion(rows){
+    // Stable matrix-to-quaternion conversion, including opposite-axis views.
+    const m=rows.flat(),trace=m[0]+m[4]+m[8];let q;
+    if(trace>0){const s=2*Math.sqrt(trace+1);q=[(m[7]-m[5])/s,(m[2]-m[6])/s,(m[3]-m[1])/s,s/4];}
+    else if(m[0]>m[4]&&m[0]>m[8]){const s=2*Math.sqrt(1+m[0]-m[4]-m[8]);q=[s/4,(m[1]+m[3])/s,(m[2]+m[6])/s,(m[7]-m[5])/s];}
+    else if(m[4]>m[8]){const s=2*Math.sqrt(1+m[4]-m[0]-m[8]);q=[(m[1]+m[3])/s,s/4,(m[5]+m[7])/s,(m[2]-m[6])/s];}
+    else{const s=2*Math.sqrt(1+m[8]-m[0]-m[4]);q=[(m[2]+m[6])/s,(m[5]+m[7])/s,s/4,(m[3]-m[1])/s];}
+    return unit(q);
+  }
+  function withRotation(camera,rotation){return {...camera,target:[...camera.target],rotation};}
+  function alignCrystalCamera(camera,cell,axis,side=1){
+    if(![-1,1].includes(side))throw new TypeError('Invalid viewing side.');
+    const direction=axisVector(cell,axis).map(v=>v*side);
+    const secondary=axisVector(cell,axis==='b'?'c':'b');
+    const up=unit(secondary.map((v,i)=>v-dot(secondary,direction)*direction[i]));
+    return withRotation(camera,quaternion([cross(up,direction),up,direction]));
+  }
+  function rotateCrystalCamera(camera,cell,axis,degrees=DEFAULT_ROTATION_DEGREES){
+    if(!Number.isFinite(degrees))throw new TypeError('Invalid rotation angle.');
+    const angle=degrees*Math.PI/360;
+    const [bx,by,bz]=axisVector(cell,axis).map(v=>v*Math.sin(angle)),bw=Math.cos(angle);
+    const [ax,ay,az,aw]=unit(camera.rotation);
+    // Post-multiply: rotate around the crystallographic axis in model coordinates.
+    return withRotation(camera,unit([aw*bx+ax*bw+ay*bz-az*by,aw*by-ax*bz+ay*bw+az*bx,aw*bz+ax*by-ay*bx+az*bw,aw*bw-ax*bx-ay*by-az*bz]));
+  }
+  return {DEFAULT_ROTATION_DEGREES,alignCrystalCamera,rotateCrystalCamera};
+});
+;
 /* web/structure-viewer/crystal/supercell-size.js */
 (function (root, factory) {
   const dependencies = typeof module === "object" && module.exports
@@ -5730,7 +5771,7 @@
             scheduleCameraEvents();
           },
           resetCamera() {
-            ensureActive(); suppressCameraEvents = true; camera = cameraForScene(scene); viewer.zoomTo(); viewer.render(); scheduleCameraEvents();
+            ensureActive(); suppressCameraEvents = true; camera = {...cameraForScene(scene),projection:camera.projection}; viewer.setProjection?.(camera.projection); viewer.zoomTo(); viewer.render(); scheduleCameraEvents();
           },
           resize() {
             ensureActive();
@@ -8425,6 +8466,10 @@
   "use strict";
 
   const labels = {
+    "View":"視点", "Projection":"投影方式", "Perspective":"Perspective（遠近あり）", "Orthographic":"Orthographic（平行投影）",
+    "View along crystal axis":"結晶軸方向から見る", "Rotate about crystal axis":"結晶軸まわりに回転", "Rotation step (degrees)":"回転角度（°）",
+    "View from +a":"+a側から見る", "View from −a":"−a側から見る", "View from +b":"+b側から見る", "View from −b":"−b側から見る", "View from +c":"+c側から見る", "View from −c":"−c側から見る",
+    "Rotate a +":"a軸まわりに＋回転", "Rotate a −":"a軸まわりに−回転", "Rotate b +":"b軸まわりに＋回転", "Rotate b −":"b軸まわりに−回転", "Rotate c +":"c軸まわりに＋回転", "Rotate c −":"c軸まわりに−回転",
     "Volume (calculated)": "体積（計算値）",
     "Cell range": "セル範囲", "Molecule count (advanced)": "分子数（詳細）", "Radius (advanced)": "半径（詳細）",
     "Cell translation ranges": "セル並進の整数範囲",
@@ -8810,13 +8855,45 @@
     crystalMetadataRows(source).forEach((row) => metadata.append(createElement(document, "dt", {}, row.label), createElement(document, "dd", row.value === "Not reported in CIF" ? {"data-viewer-text":row.value} : {}, row.value)));
     information.append(metadata);
     const feedback = createElement(document, "div", { className: "crystal-feedback" });
+    const cameraControls=createElement(document,"fieldset",{className:"crystal-camera-controls"});
+    cameraControls.append(createElement(document,"legend",{},"View"));
+    const projection=createElement(document,"select",{"aria-label":"Projection"});
+    projection.append(option(document,"perspective","Perspective"),option(document,"orthographic","Orthographic"));
+    projection.value=options.camera?.projection||"perspective";
+    cameraControls.append(labeledControl(document,"Projection",projection));
+    const alignButtons=createElement(document,"div",{className:"crystal-camera-buttons"});
+    cameraControls.append(createElement(document,"span",{className:"crystal-field-label"},"View along crystal axis"),alignButtons);
+    const rotationStep=createElement(document,"input",{type:"number",min:"0.1",max:"180",step:"0.1",value:"5","aria-label":"Rotation step (degrees)"});
+    cameraControls.append(labeledControl(document,"Rotation step (degrees)",rotationStep));
+    const rotationButtons=createElement(document,"div",{className:"crystal-camera-buttons"});
+    cameraControls.append(createElement(document,"span",{className:"crystal-field-label"},"Rotate about crystal axis"),rotationButtons);
+    const cameraFeedback=createElement(document,"output",{className:"crystal-camera-feedback","aria-live":"polite"});
+    cameraControls.append(cameraFeedback);
+    function cameraAction(action){
+      try { options.onCameraChange?.(action); cameraFeedback.textContent=""; }
+      catch(error){cameraFeedback.textContent=error?.message||String(error);projection.value=options.getCamera?.()?.projection||projection.value;}
+    }
+    for(const axis of ["a","b","c"]) for(const side of [1,-1]) {
+      const sign=side===1?"+":"−";
+      const align=createElement(document,"button",{type:"button",className:"outlined-action","aria-label":`View from ${sign}${axis}`},`${sign}${axis}`);
+      align.addEventListener("click",()=>cameraAction({kind:"align",axis,side}));
+      alignButtons.append(align);
+      const rotate=createElement(document,"button",{type:"button",className:"outlined-action","aria-label":`Rotate ${axis} ${sign}`},`${axis} ${sign}`);
+      rotate.addEventListener("click",()=>{
+        const degrees=Number(rotationStep.value);
+        if(!Number.isFinite(degrees)||degrees<.1||degrees>180){cameraFeedback.textContent="Rotation angle must be between 0.1 and 180 degrees.";return;}
+        cameraAction({kind:"rotate",axis,degrees:degrees*side});
+      });
+      rotationButtons.append(rotate);
+    }
+    projection.addEventListener("change",()=>cameraAction({kind:"projection",projection:projection.value}));
     const exportSummary = createElement(document, "output", { className: "crystal-export-summary", "aria-live": "polite" });
     const warnings = createElement(document, "output", { className: "crystal-warnings", "aria-live": "polite" });
     const progress = createElement(document, "output", { className: "crystal-progress", "aria-live": "polite" });
     const cancel = createElement(document, "button", { type: "button", className: "outlined-action crystal-cancel" }, "Cancel");
     cancel.hidden = true;
     feedback.append(warnings, progress, cancel);
-    panel.append(fields, supercell, replication, rangeSummary, ownership, display, information, exportSummary, feedback);
+    panel.append(fields, supercell, replication, rangeSummary, ownership, display, cameraControls, information, exportSummary, feedback);
     container.append(panel);
 
     function readState() {
@@ -8862,7 +8939,7 @@
 
     function notify(event) {
       if (disposed) return;
-      if (event?.target === unitCell || event?.target === axes) return;
+      if (event?.target === unitCell || event?.target === axes || event?.target === projection || event?.target === rotationStep) return;
       try {
         if (event?.target === content && ["unit-cell","supercell","packing"].includes(content.value)) {
           state.wrapFractionalCoordinates=true;
@@ -8919,6 +8996,7 @@
       },
       setExportSummary: (summary) => { exportSummary.textContent = crystalExportSummary(summary); exportSummary.setAttribute("data-viewer-export-summary", exportSummary.textContent); },
       getExportMode: () => exportMode.value,
+      setCamera: (camera) => {projection.value=camera.projection;},
       dispose: () => { disposed = true; panel.remove(); },
     });
   }
@@ -8938,6 +9016,7 @@
       ...require("./viewer-pane.js"), ...require("./workspace-tabs.js"), ...require("./crystal-panel.js"),
       ...require("../renderers/3dmol-renderer.js"), ...require("../viewer-math.js"),
       ...require("../core/visual-policy.js"),
+      ...require("../crystal/camera.js"),
       ...require("../transfer/window-transfer.js"),
       share: require("../share-codec.js"),
     }
@@ -9033,6 +9112,9 @@
         canHideSelected: Boolean(selectedDerivedComponentId(entry)),
         onChange: (normalized) => applyCrystalPanelChange(entry, normalized),
         onUnitCellChange: (visible) => applyUnitCellVisibility(entry, visible),
+        camera: entry.instance.getCamera(),
+        getCamera: () => entry.instance.getCamera(),
+        onCameraChange: (action) => applyCrystalCamera(entry,action),
         onAxesChange: async (visible) => {
           workspace.patchViewer(entry.viewerId,{view:{crystalDisplay:{showCellAxes:visible}}});
           await entry.instance.updateView();
@@ -9101,6 +9183,7 @@
       if (workspace.getState().layout === "side-by-side" && secondaryViewerId === viewerId) secondaryViewerId = priorActive && priorActive !== viewerId ? priorActive : null;
       runtime.forEach((entry, id) => { if (entry.crystalPanel?.element) entry.crystalPanel.element.hidden = id !== viewerId; });
       const current = runtime.get(viewerId);
+      current?.crystalPanel?.setCamera?.(current.instance.getCamera());
       const viewerState = workspace.getState().instances[viewerId];
       if (current?.source) {
         refreshExport(current);
@@ -9339,6 +9422,27 @@
     function refreshCrystalActions(current) {
       current?.crystalPanel?.setHideAvailable?.(Boolean(selectedDerivedComponentId(current)));
       if (current && workspace.getState().activeViewerId === current.viewerId) updateMeasurement();
+    }
+
+    function applyCrystalCamera(current, action) {
+      const previous=current.instance.getCamera();
+      let camera=previous;
+      if(action.kind==='projection') {
+        if(!['perspective','orthographic'].includes(action.projection))throw new TypeError('Invalid projection.');
+        camera={...previous,projection:action.projection};
+      } else if(action.kind==='align') camera=dependencies.alignCrystalCamera(previous,current.source.crystal.cell,action.axis,action.side);
+      else if(action.kind==='rotate') camera=dependencies.rotateCrystalCamera(previous,current.source.crystal.cell,action.axis,action.degrees);
+      else throw new TypeError('Invalid camera action.');
+      try {
+        workspace.patchViewer(current.viewerId,{camera});
+        current.instance.updateCamera(camera);
+        current.crystalPanel?.setCamera?.(camera);
+      } catch(error) {
+        workspace.patchViewer(current.viewerId,{camera:previous});
+        current.instance.updateCamera(previous);
+        current.crystalPanel?.setCamera?.(previous);
+        throw error;
+      }
     }
 
     async function applyUnitCellVisibility(current, visible) {
@@ -9837,7 +9941,13 @@
       elements.style?.addEventListener("change", () => report(setDisplay(elements.style.value)));
       elements.labels?.addEventListener("click", () => report(toggleLabels()));
       elements.clear?.addEventListener("click", () => report(activeRuntime()?.pane.clearSelection()).then(updateMeasurement));
-      elements.reset?.addEventListener("click", () => activeRuntime()?.instance.updateCamera(null));
+      elements.reset?.addEventListener("click", () => {
+        const current=activeRuntime();if(!current)return;
+        current.instance.updateCamera(null);
+        const camera=current.instance.getCamera();
+        workspace.patchViewer(current.viewerId,{camera});
+        current.crystalPanel?.setCamera?.(camera);
+      });
       elements.showXyz?.addEventListener("click", () => { if (!elements.xyzPanel) return; elements.xyzPanel.open = !elements.xyzPanel.open; elements.showXyz.setAttribute("aria-expanded", String(elements.xyzPanel.open)); });
       elements.copy?.addEventListener("click", copyCoordinates);
       elements.exportXyz?.addEventListener("click", () => {

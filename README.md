@@ -163,6 +163,14 @@ independently of cell edges; their visibility is retained in v3 shares. Explicit
 axis settings in saved shares are honored. Representation names are ball & stick,
 stick and spacefill in both interface languages.
 
+Crystal View controls switch between Perspective and Orthographic, view from
+the positive/negative a/b/c sides, and rotate around actual crystallographic
+axes. Rotation starts at 5 degrees per click and accepts 0.1–180 degrees.
+Axis views use a perpendicularized secondary crystal direction for screen-up;
+they do not turn a triclinic lattice into an orthogonal box. Camera operations
+preserve target/distance and source/displayed XYZ coordinates. Projection and
+orientation are retained in v3 shares and duplicates, including after Reset.
+
 Distance, angle and dihedral values appear at the lower left of the viewer.
 Selected-atom details are in Info / XYZ; there is no Measurements tab. Double-click inside a
 viewer, including its canvas, to clear that viewer's selection.
