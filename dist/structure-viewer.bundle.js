@@ -8542,6 +8542,7 @@
     const pages = Array.from(document.querySelectorAll("[data-sidebar-page]"));
     const crystalHost = document.getElementById("crystalPanelHost");
     const crystalTab = document.getElementById("crystalTab");
+    const crystalInformationTab = document.getElementById("crystalInformationTab");
     const controls = ["openButton", "labelsButton", "clearButton", "resetButton", "copyCoordinatesButton", "exportXyzButton", "shareButton", "openDetachedButton", "showXyzButton"];
     controls.forEach((id) => { const node = document.getElementById(id); node.dataset.viewerText = node.textContent; });
     document.querySelectorAll('#styleSelect option, #viewer > p, .sr-only').forEach((node) => { node.dataset.viewerText = node.textContent; });
@@ -8553,7 +8554,7 @@
     });
 
     function selectPage(name) {
-      if (name === "crystal" && crystalHost.hidden) name = "info";
+      if (["crystal","crystal-information"].includes(name) && crystalHost.hidden) name = "info";
       selectedPage = name;
       tabs.forEach((tab) => { const active = tab.dataset.sidebarTab === name; tab.setAttribute("aria-selected", String(active)); tab.tabIndex = active ? 0 : -1; });
       pages.forEach((page) => { page.hidden = page.dataset.sidebarPage !== name; });
@@ -8596,8 +8597,9 @@
     function reflect() {
       const newCrystal = crystalTab.hidden && !crystalHost.hidden;
       crystalTab.hidden = crystalHost.hidden;
+      if(crystalInformationTab) crystalInformationTab.hidden=crystalHost.hidden;
       if (newCrystal) selectPage("crystal");
-      if (selectedPage === "crystal" && crystalHost.hidden) selectPage("info");
+      if (["crystal","crystal-information"].includes(selectedPage) && crystalHost.hidden) selectPage("info");
       translate();
     }
     async function applyPreferences(next) {
@@ -8847,8 +8849,8 @@
     axesLabel.append(axes,createElement(document,"span",{},"Crystal axes"));
     display.append(unitCellLabel, axesLabel, hideMolecule, showAll);
 
-    const information = createElement(document, "details", { className: "crystal-information", open: "" });
-    information.append(createElement(document,"summary",{"data-viewer-text":"Crystal information"},"Crystal information"));
+    const information = createElement(document, "section", { className: "crystal-information" });
+    information.append(createElement(document,"h3",{"data-viewer-text":"Crystal information"},"Crystal information"));
     const uncertaintyNote = "Reported CIF values. Parentheses give standard uncertainties (s.u.); refinement statistics refer to the original CIF.";
     information.append(createElement(document,"p",{className:"sidebar-help","data-viewer-text":uncertaintyNote},uncertaintyNote));
     const metadata = createElement(document, "dl", { className: "crystal-metadata" });
@@ -8893,7 +8895,9 @@
     const cancel = createElement(document, "button", { type: "button", className: "outlined-action crystal-cancel" }, "Cancel");
     cancel.hidden = true;
     feedback.append(warnings, progress, cancel);
-    panel.append(fields, supercell, replication, rangeSummary, ownership, display, cameraControls, information, exportSummary, feedback);
+    panel.append(fields, supercell, replication, rangeSummary, ownership, display, cameraControls, exportSummary, feedback);
+    if(options.informationContainer){information.hidden=true;options.informationContainer.append(information);}
+    else panel.append(information);
     container.append(panel);
 
     function readState() {
@@ -8986,6 +8990,7 @@
 
     return Object.freeze({
       element: panel,
+      informationElement: information,
       getState: () => normalizeCrystalPanelState(source, readState()),
       setState: (next) => reflect(next || {}),
       setHideAvailable: (available) => { hideMolecule.disabled = available !== true; },
@@ -8997,7 +9002,7 @@
       setExportSummary: (summary) => { exportSummary.textContent = crystalExportSummary(summary); exportSummary.setAttribute("data-viewer-export-summary", exportSummary.textContent); },
       getExportMode: () => exportMode.value,
       setCamera: (camera) => {projection.value=camera.projection;},
-      dispose: () => { disposed = true; panel.remove(); },
+      dispose: () => { disposed = true; panel.remove(); information.remove(); },
     });
   }
 
@@ -9108,6 +9113,7 @@
     function crystalPanelOptions(entry, definition, view) {
       return {
         document, container: elements.crystalPanel, source: entry.source,
+        informationContainer: document.getElementById?.("crystalInformationHost"),
         initialState: crystalPanelState(definition, entry.exportMode, view),
         canHideSelected: Boolean(selectedDerivedComponentId(entry)),
         onChange: (normalized) => applyCrystalPanelChange(entry, normalized),
@@ -9182,6 +9188,7 @@
       workspace.activate(viewerId);
       if (workspace.getState().layout === "side-by-side" && secondaryViewerId === viewerId) secondaryViewerId = priorActive && priorActive !== viewerId ? priorActive : null;
       runtime.forEach((entry, id) => { if (entry.crystalPanel?.element) entry.crystalPanel.element.hidden = id !== viewerId; });
+      runtime.forEach((entry,id)=>{if(entry.crystalPanel?.informationElement)entry.crystalPanel.informationElement.hidden=id!==viewerId;});
       const current = runtime.get(viewerId);
       current?.crystalPanel?.setCamera?.(current.instance.getCamera());
       const viewerState = workspace.getState().instances[viewerId];

@@ -177,7 +177,9 @@ viewer, including its canvas, to clear that viewer's selection.
 The 3D viewer retains selection/order labels and measurement helper lines;
 it does not generate numeric measurement labels, including for older shares.
 
-Crystal information includes reported cell standard uncertainties (parentheses),
+The separate Crystal information tab contains CIF statistics; Crystal keeps
+scene, cell expansion and camera controls. Both tabs follow the active viewer
+and are hidden for non-crystal structures. Crystal information includes reported cell standard uncertainties (parentheses),
 R1 and wR2 for observed/all reflections, goodness of fit, Flack, reflection counts,
 density and residual-density RMS/extrema. Missing Flack values are marked as not
 reported. Statistics refer to the original CIF, independent of display expansion.

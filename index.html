@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <title>Research Toolkit Structure Viewer</title>
-    <link rel="stylesheet" href="app.css?v=20261002-crystal-camera">
+    <link rel="stylesheet" href="app.css?v=20261002-crystal-info-tab">
   </head>
   <body>
     <header class="app-header">
@@ -53,9 +53,11 @@
           <h2 data-viewer-text="Viewer settings">Viewer settings</h2>
           <div class="sidebar-tabs" role="tablist" aria-label="Viewer settings">
             <button id="crystalTab" role="tab" aria-controls="crystalPage" data-sidebar-tab="crystal" aria-selected="false" data-viewer-text="Crystal" tabindex="-1" hidden>Crystal</button>
+            <button id="crystalInformationTab" role="tab" aria-controls="crystalInformationPage" data-sidebar-tab="crystal-information" aria-selected="false" data-viewer-text="Crystal information" tabindex="-1" hidden>Crystal information</button>
             <button id="infoTab" role="tab" aria-controls="infoPage" data-sidebar-tab="info" aria-selected="true" data-viewer-text="Info / XYZ">Info / XYZ</button>
           </div>
           <section id="crystalPage" role="tabpanel" aria-labelledby="crystalTab" data-sidebar-page="crystal" hidden><section id="crystalPanelHost" class="crystal-panel-host" aria-label="Crystal settings" hidden></section></section>
+          <section id="crystalInformationPage" role="tabpanel" aria-labelledby="crystalInformationTab" data-sidebar-page="crystal-information" hidden><section id="crystalInformationHost"></section></section>
           <section id="infoPage" role="tabpanel" aria-labelledby="infoTab" data-sidebar-page="info">
             <label class="model-control" hidden><span class="sr-only">Structure model</span><select id="modelSelect" aria-label="Structure model"></select></label>
             <h3 data-viewer-text="Selected atoms">Selected atoms</h3><output id="selectionSummary">—</output>
@@ -71,7 +73,7 @@
     <script src="vendor/3Dmol-2.5.3.min.js"></script>
     <script src="vendor/openchemlib-9.18.2.min.js"></script>
     <script src="vendor/molstar-cif-parser.js"></script>
-    <script src="dist/structure-viewer.bundle.js?v=20261002-crystal-camera"></script>
-    <script src="app.js?v=20261002-crystal-camera"></script>
+    <script src="dist/structure-viewer.bundle.js?v=20261002-crystal-info-tab"></script>
+    <script src="app.js?v=20261002-crystal-info-tab"></script>
   </body>
 </html>
