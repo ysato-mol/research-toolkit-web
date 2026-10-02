@@ -52,7 +52,7 @@ button, select, textarea { font: inherit; letter-spacing: 0; }
 .viewer.is-split .viewer-pane-host { position: relative; inset: auto; min-width: 0; background: var(--color-surface); }
 .viewer > p { margin: 0; padding: 20px; color: var(--color-text-secondary); }
 .measurement-overlay, .status-message { position: absolute; z-index: 2; max-width: calc(100% - 16px); padding: 4px 7px; border-radius: 4px; box-shadow: 0 1px 6px rgba(15, 23, 42, .14); font-size: .72rem; font-weight: 650; pointer-events: none; }
-.measurement-overlay { position: static; display: block; margin: 10px 0; padding: 12px; border: 1px solid var(--color-outline); background: var(--color-surface-low); color: var(--color-text); font-size: 14px; box-shadow: none; }
+.measurement-overlay { left: 10px; bottom: 10px; margin: 0; padding: 7px 10px; border: 1px solid var(--color-outline); background: var(--color-surface-low); color: var(--color-text); font-size: 14px; }
 .status-message { right: 12px; top: 12px; background: rgba(249, 251, 255, .96); border: 1px solid var(--color-outline); color: var(--color-text-secondary); }
 .resize-affordance { position: absolute; right: 5px; bottom: 5px; z-index: 3; width: 18px; height: 10px; border-bottom: 2px solid rgba(89, 89, 89, .54); pointer-events: none; }
 

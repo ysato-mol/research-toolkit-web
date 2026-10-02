@@ -8378,7 +8378,7 @@
   function createViewerWorkbench({ window: windowObject, controller, preferences = {} }) {
     const document = windowObject.document;
     let language = preferences.language === "ja" ? "ja" : "en";
-    let selectedPage = "display";
+    let selectedPage = "measure";
     const tabs = Array.from(document.querySelectorAll("[data-sidebar-tab]"));
     const pages = Array.from(document.querySelectorAll("[data-sidebar-page]"));
     const crystalHost = document.getElementById("crystalPanelHost");
@@ -8394,7 +8394,7 @@
     });
 
     function selectPage(name) {
-      if (name === "crystal" && crystalHost.hidden) name = "display";
+      if (name === "crystal" && crystalHost.hidden) name = "measure";
       selectedPage = name;
       tabs.forEach((tab) => { const active = tab.dataset.sidebarTab === name; tab.setAttribute("aria-selected", String(active)); tab.tabIndex = active ? 0 : -1; });
       pages.forEach((page) => { page.hidden = page.dataset.sidebarPage !== name; });
@@ -8436,7 +8436,7 @@
     }
     function reflect() {
       crystalTab.hidden = crystalHost.hidden;
-      if (selectedPage === "crystal" && crystalHost.hidden) selectPage("display");
+      if (selectedPage === "crystal" && crystalHost.hidden) selectPage("measure");
       translate();
     }
     async function applyPreferences(next) {
@@ -9670,7 +9670,11 @@
       elements.file?.addEventListener("change", async () => { if (elements.file.files?.length) await importFiles(elements.file.files); });
       elements.stage?.addEventListener("dragover", (event) => event.preventDefault());
       elements.stage?.addEventListener("drop", async (event) => { event.preventDefault(); if (event.dataTransfer?.files?.length) await importFiles(event.dataTransfer.files); });
-      elements.stage?.addEventListener("dblclick", (event) => { if (event.target === elements.stage || event.target === elements.viewer) report(activeRuntime()?.pane.clearSelection()).then(updateMeasurement); });
+      elements.stage?.addEventListener("dblclick", (event) => {
+        event.preventDefault();
+        const clicked = [...runtime.values()].find(entry => entry.host?.contains?.(event.target));
+        report((clicked || activeRuntime())?.pane?.clearSelection()).then(updateMeasurement);
+      });
       const report = (work) => Promise.resolve(work).catch((error) => setStatus(error?.message || String(error), true));
       elements.model?.addEventListener("change", () => {
         const current = activeRuntime();

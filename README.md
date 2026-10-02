@@ -151,7 +151,9 @@ settings, including explicit legacy count/radius and wrapping settings, are
 restored as saved. Ranges, grid visibility and hidden periodic components are
 stored in new shares without changing source content or atom identity.
 
-Distance, angle and dihedral values appear only in the Measurement panel.
+Distance, angle and dihedral values appear at the lower left of the viewer.
+The Measurements tab retains selected-atom details. Double-click inside a
+viewer, including its canvas, to clear that viewer's selection.
 The 3D viewer retains selection/order labels and measurement helper lines;
 it does not generate numeric measurement labels, including for older shares.
 
