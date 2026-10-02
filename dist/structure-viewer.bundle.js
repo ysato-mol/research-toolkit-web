@@ -47,6 +47,50 @@
   return { LIMITS, CAPABILITIES, COVALENT_RADII_ANGSTROM, TRANSITION_METALS };
 });
 ;
+/* web/structure-viewer/core/crystal-info.js */
+(function (root, factory) {
+  const api = factory();
+  if (typeof module === "object" && module.exports) module.exports = api;
+  if (root) root.StructureViewerCore = Object.assign(root.StructureViewerCore || {}, api);
+})(typeof window !== "undefined" ? window : globalThis, function () {
+  "use strict";
+  // Display-only reported CIF values retain s.u. notation; scientific coordinates
+  // and the existing content-identity projection do not depend on this record.
+  const CRYSTAL_INFO_FIELDS = Object.freeze({
+    a: "cell_length_a", b: "cell_length_b", c: "cell_length_c",
+    alpha: "cell_angle_alpha", beta: "cell_angle_beta", gamma: "cell_angle_gamma",
+    volume: "cell_volume", temperature: "diffrn_ambient_temperature",
+    crystalSystem: "space_group_crystal_system", moiety: "chemical_formula_moiety",
+    formulaWeight: "chemical_formula_weight", density: "exptl_crystal_density_diffrn",
+    absorption: "exptl_absorpt_coefficient_mu", f000: "exptl_crystal_F_000",
+    sizeMax: "exptl_crystal_size_max", sizeMid: "exptl_crystal_size_mid", sizeMin: "exptl_crystal_size_min",
+    radiation: "diffrn_radiation_type", wavelength: "diffrn_radiation_wavelength",
+    thetaMin: "diffrn_reflns_theta_min", thetaMax: "diffrn_reflns_theta_max",
+    measured: "diffrn_reflns_number", independent: "reflns_number_total", observed: "reflns_number_gt",
+    threshold: "reflns_threshold_expression", rInt: "diffrn_reflns_av_R_equivalents",
+    rSigma: "diffrn_reflns_av_unetI/netI", completeness: "diffrn_measured_fraction_theta_max",
+    r1Gt: "refine_ls_R_factor_gt", r1All: "refine_ls_R_factor_all",
+    wr2Gt: "refine_ls_wR_factor_gt", wr2All: "refine_ls_wR_factor_ref",
+    goodnessOfFit: "refine_ls_goodness_of_fit_ref", flack: "refine_ls_abs_structure_Flack",
+    parameters: "refine_ls_number_parameters", restraints: "refine_ls_number_restraints",
+    shiftSuMax: "refine_ls_shift/su_max", shiftSuMean: "refine_ls_shift/su_mean",
+    residualMax: "refine_diff_density_max", residualMin: "refine_diff_density_min", residualRms: "refine_diff_density_rms",
+  });
+  const TEXT_FIELDS = new Set(["crystalSystem", "moiety", "radiation", "threshold"]);
+  const NUMBER = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:\(\d+\))?(?:[eE][+-]?\d+)?$/;
+  function validateCrystalInfo(info) {
+    if (!info || typeof info !== "object" || Array.isArray(info)) throw new TypeError("Reported crystal information must be an object.");
+    for (const [key, value] of Object.entries(info)) {
+      if (!Object.hasOwn(CRYSTAL_INFO_FIELDS, key) || typeof value !== "string" || !value.length || value.length > 256
+        || /[\u0000-\u001f]/.test(value) || (key !== "threshold" && /[<>]/.test(value)) || (!TEXT_FIELDS.has(key) && (!NUMBER.test(value) || !Number.isFinite(Number(value.replace(/\(\d+\)/, "")))))) {
+        throw new TypeError(`Invalid reported crystal information: ${key}`);
+      }
+    }
+    return info;
+  }
+  return { CRYSTAL_INFO_FIELDS, validateCrystalInfo };
+});
+;
 /* web/structure-viewer/crystal/unit-cell.js */
 (function (root, factory) {
   const api = factory();
@@ -1609,7 +1653,7 @@
 /* web/structure-viewer/core/validators.js */
 (function (root, factory) {
   const dependencies = typeof module === "object" && module.exports
-    ? require("./constants.js")
+    ? { ...require("./constants.js"), ...require("./crystal-info.js") }
     : root.StructureViewerCore;
   const api = factory(dependencies);
   if (typeof module === "object" && module.exports) module.exports = api;
@@ -1873,6 +1917,7 @@
     assertString(value.displayName, "$.displayName");
     if (!STRUCTURE_TYPES.has(value.structureType)) fail("invalid-structure-type", "$.structureType", { value: value.structureType });
     assertObject(value.source, "$.source");
+    if (value.source.crystalInfo !== undefined) dependencies.validateCrystalInfo(value.source.crystalInfo);
     if (!SOURCE_FORMATS.has(value.source.format)) fail("invalid-source-format", "$.source.format", { value: value.source.format });
     if (value.source.canonicalFormat !== "rt-structure-json/1") fail("invalid-canonical-format", "$.source.canonicalFormat");
     assertDeclaredCount("inputSourceBytes", value.source.byteLength, "$.source.byteLength");
@@ -3374,7 +3419,7 @@
 /* web/structure-viewer/parsers/cif-parser.js */
 (function (root, factory) {
   const core = typeof module === "object" && module.exports
-    ? { ...require("../core/constants.js"), ...require("../crystal/unit-cell.js") }
+    ? { ...require("../core/constants.js"), ...require("../core/crystal-info.js"), ...require("../crystal/unit-cell.js") }
     : { ...root.StructureViewerCore, ...root.StructureViewerCrystal };
   const defaultBackend = typeof module === "object" && module.exports
     ? require("../vendor/molstar-cif-parser.js")
@@ -3584,6 +3629,24 @@
     return Boolean(block.categories.atom_site
       && values(block, ["atom_site.Cartn_x"])
       && (values(block, ["atom_site.label_comp_id"]) || values(block, ["atom_site.group_PDB"])));
+  }
+
+  function projectCrystalInfo(block) {
+    const info = {};
+    for (const [key, tag] of Object.entries(core.CRYSTAL_INFO_FIELDS)) {
+      const category = ["chemical_formula", "exptl_crystal", "exptl_absorpt", "diffrn_reflns", "diffrn_radiation", "space_group", "cell", "refine", "diffrn", "reflns", "exptl"].find((name) => tag.startsWith(name + "_"));
+      const names = [tag, category + "." + tag.slice(category.length + 1)];
+      if (key === "temperature") names.push("diffrn.ambient_temp");
+      if (key === "wavelength") names.push("diffrn_radiation_wavelength.wavelength");
+      if (key === "temperature") names.push("cell_measurement_temperature", "cell.measurement_temperature");
+      if (key === "crystalSystem") names.push("symmetry_cell_setting", "symmetry.cell_setting");
+      const token = names.map((name) => textAt(values(block, [name]))).find((value) => value !== undefined);
+      const value = key === "threshold" ? token?.trim() : metadataText([token]);
+      if (value !== undefined) {
+        try { core.validateCrystalInfo({[key]: value}); info[key] = value; } catch (_) { /* Ignore invalid reporting tokens. */ }
+      }
+    }
+    return info;
   }
 
   function projectCrystalMetadata(block) {
@@ -3800,7 +3863,7 @@
         schema: "rt-parsed-structure/1",
         displayName: String(input.displayName || input.name || block.header || "CIF structure"),
         structureType: mmcif ? "macromolecule" : "crystal",
-        source: { format: mmcif ? "mmcif" : "cif", originalFilename: input.displayName || input.name, byteLength: byteLength(text), canonicalFormat: "rt-structure-json/1" },
+        source: { format: mmcif ? "mmcif" : "cif", originalFilename: input.displayName || input.name, byteLength: byteLength(text), canonicalFormat: "rt-structure-json/1", ...(cell ? {crystalInfo: projectCrystalInfo(block)} : {}) },
         models,
         ...(cell ? { crystal: {
           cell,
@@ -6333,7 +6396,7 @@
   }
 
   function validateSourceShape(source) {
-    exactFields(source.source, new Set(["format", "originalFilename", "byteLength", "canonicalFormat", "mediaType"]), "snapshot.sourceStructure.source");
+    exactFields(source.source, new Set(["format", "originalFilename", "byteLength", "canonicalFormat", "mediaType", "crystalInfo"]), "snapshot.sourceStructure.source");
     source.models.forEach((model, modelIndex) => {
       const modelPath = `snapshot.sourceStructure.models[${modelIndex}]`;
       exactFields(model, new Set(["modelId", "label", "atomSites", "bonds", "residues"]), modelPath);
@@ -7153,7 +7216,7 @@
 /* web/structure-viewer/share/share-v3.js */
 (function (root, factory) {
   const dependencies = typeof module === "object" && module.exports
-    ? { ...require("../core/constants.js"), ...require("../core/canonical-json.js"), ...require("../core/validators.js"), ...require("../core/structure-factory.js"), ...require("../core/scene-definition.js"), ...require("../core/atom-identity.js"), ...require("../crystal/unit-cell.js"), ...require("../crystal/symmetry.js"), ...require("./legacy-v3-cif-verifier.js") }
+    ? { ...require("../core/constants.js"), ...require("../core/crystal-info.js"), ...require("../core/canonical-json.js"), ...require("../core/validators.js"), ...require("../core/structure-factory.js"), ...require("../core/scene-definition.js"), ...require("../core/atom-identity.js"), ...require("../crystal/unit-cell.js"), ...require("../crystal/symmetry.js"), ...require("./legacy-v3-cif-verifier.js") }
     : { ...root.StructureViewerCore, ...root.StructureViewerCrystal, ...root.StructureShareV3Legacy };
   const api = factory(dependencies);
   if (typeof module === "object" && module.exports) module.exports = api;
@@ -7468,6 +7531,7 @@
       sourceFormat: source.source.format,
       canonicalFormat: source.source.canonicalFormat,
       ...(source.source.mediaType !== undefined ? { sourceMediaType: source.source.mediaType } : {}),
+      ...(source.source.crystalInfo !== undefined ? { reportedCrystal: clone(source.source.crystalInfo) } : {}),
       structureType: source.structureType,
       models: source.models.map((model) => ({
         modelId: model.modelId,
@@ -7523,6 +7587,7 @@
       structureType: shared.structureType,
       source: {
         format: shared.sourceFormat,
+        ...(shared.reportedCrystal !== undefined ? { crystalInfo: clone(shared.reportedCrystal) } : {}),
         canonicalFormat: shared.canonicalFormat,
         ...(shared.sourceMediaType !== undefined ? { mediaType: shared.sourceMediaType } : {}),
         byteLength: 0,
@@ -7571,10 +7636,11 @@
     allow(payload, ["schema", "source", "view"], "$.");
     if (payload.schema !== SCHEMA) throw new TypeError("Unsupported structure share v3 schema.");
     const shared = payload.source;
-    allow(shared, ["schema", "sourceStructureId", "contentIdentity", "sourceFormat", "canonicalFormat", "sourceMediaType", "structureType", "models", "crystal", "metadata"], "$.source");
+    allow(shared, ["schema", "sourceStructureId", "contentIdentity", "sourceFormat", "canonicalFormat", "sourceMediaType", "reportedCrystal", "structureType", "models", "crystal", "metadata"], "$.source");
     if (shared.schema !== SHARED_SOURCE_SCHEMA) throw new TypeError("Unsupported shared source schema.");
     string(shared.sourceStructureId, "$.source.sourceStructureId");
     if (!/^sha256:[0-9a-f]{64}$/.test(shared.contentIdentity || "")) throw new TypeError("$.source.contentIdentity is invalid.");
+    if (shared.reportedCrystal !== undefined) dependencies.validateCrystalInfo(shared.reportedCrystal);
     string(shared.sourceFormat, "$.source.sourceFormat"); string(shared.canonicalFormat, "$.source.canonicalFormat");
     if (shared.sourceMediaType !== undefined) string(shared.sourceMediaType, "$.source.sourceMediaType");
     string(shared.structureType, "$.source.structureType");
@@ -8313,6 +8379,7 @@
   "use strict";
 
   const labels = {
+    "Volume (calculated)": "体積（計算値）",
     "Cell range": "セル範囲", "Molecule count (advanced)": "分子数（詳細）", "Radius (advanced)": "半径（詳細）",
     "Cell translation ranges": "セル並進の整数範囲",
     "Cell expansion (a / b / c)": "結晶軸 a / b / c のセル拡張",
@@ -8336,6 +8403,7 @@
     "XYZ export mode": "XYZ出力対象", "Source asymmetric unit": "元の非対称単位", "Visible scene": "表示シーン", "Selected component": "選択分子",
     "Molecules": "分子数", "Radius (Å)": "半径（Å）", "Scene": "シーン", "Model": "モデル", "Disorder": "ディスオーダー", "Min. occupancy": "最小占有率", "Export": "出力対象", "XYZ export": "XYZ出力",
     "Symmetry-mate ranges": "対称操作の範囲", "Hide molecule": "分子を非表示", "Show all": "すべて表示", "Cancel": "中止",
+    "Crystal information": "結晶情報", "Crystal system": "結晶系", "Volume": "体積", "Moiety formula": "分子式（成分）", "Formula weight": "式量", "Goodness of fit (S)": "適合度 S", "Flack parameter": "Flack パラメータ", "Not reported in CIF": "CIFに記載なし", "Density (calculated)": "計算密度", "Absorption coefficient μ": "吸収係数 μ", "Crystal size": "結晶サイズ", "Radiation": "放射線", "Wavelength": "波長", "θ range": "θ範囲", "Reflections (measured / independent)": "反射数（測定 / 独立）", "Observed reflections (gt)": "観測反射数（gt）", "Observation threshold (gt)": "観測閾値（gt）", "Completeness at θmax": "完全性（θmax）", "Parameters / restraints": "パラメータ数 / 拘束数", "Maximum / mean shift / s.u.": "shift / s.u.（最大 / 平均）", "Residual density (max / min)": "残留電子密度（最大 / 最小）", "Residual density RMS": "残留電子密度 RMS", "Reported CIF values. Parentheses give standard uncertainties (s.u.); refinement statistics refer to the original CIF.": "CIFの記録値です。括弧内は標準不確かさ（s.u.）。精密化指標は元のCIFに対する値です。",
     "Space group": "空間群", "Formula": "組成式", "Temperature": "温度", "Crystal display controls": "結晶表示設定",
     "Molecule style": "表示形式", "Structure model": "構造モデル", "Open structures": "開いている構造", "Comparison Viewer": "比較するViewer", "Viewer controls": "Viewer操作",
     "Switch theme": "テーマを切り替え", "Language": "表示言語", "Home": "ホームへ戻る",
@@ -8378,7 +8446,7 @@
   function createViewerWorkbench({ window: windowObject, controller, preferences = {} }) {
     const document = windowObject.document;
     let language = preferences.language === "ja" ? "ja" : "en";
-    let selectedPage = "measure";
+    let selectedPage = "info";
     const tabs = Array.from(document.querySelectorAll("[data-sidebar-tab]"));
     const pages = Array.from(document.querySelectorAll("[data-sidebar-page]"));
     const crystalHost = document.getElementById("crystalPanelHost");
@@ -8394,7 +8462,7 @@
     });
 
     function selectPage(name) {
-      if (name === "crystal" && crystalHost.hidden) name = "measure";
+      if (name === "crystal" && crystalHost.hidden) name = "info";
       selectedPage = name;
       tabs.forEach((tab) => { const active = tab.dataset.sidebarTab === name; tab.setAttribute("aria-selected", String(active)); tab.tabIndex = active ? 0 : -1; });
       pages.forEach((page) => { page.hidden = page.dataset.sidebarPage !== name; });
@@ -8435,8 +8503,10 @@
       if (empty && empty.textContent !== viewerText("No viewers open", language)) empty.textContent = viewerText("No viewers open", language);
     }
     function reflect() {
+      const newCrystal = crystalTab.hidden && !crystalHost.hidden;
       crystalTab.hidden = crystalHost.hidden;
-      if (selectedPage === "crystal" && crystalHost.hidden) selectPage("measure");
+      if (newCrystal) selectPage("crystal");
+      if (selectedPage === "crystal" && crystalHost.hidden) selectPage("info");
       translate();
     }
     async function applyPreferences(next) {
@@ -8539,12 +8609,32 @@
     const group = source.crystal.spaceGroup || {};
     const crystalMetadata = source.crystal.metadata || {};
     const metadata = { ...crystalMetadata, ...(crystalMetadata.extra || {}) };
+    const info = source.source.crystalInfo || {};
+    const pair = (a,b) => `${a ?? "—"} / ${b ?? "—"}`;
     const rows = [
-      { label: "Unit cell", value: `${cell.a} × ${cell.b} × ${cell.c} Å; ${cell.alphaDeg}°, ${cell.betaDeg}°, ${cell.gammaDeg}°` },
+      { label: "Unit cell", value: `${info.a ?? cell.a} × ${info.b ?? cell.b} × ${info.c ?? cell.c} Å; ${info.alpha ?? cell.alphaDeg}°, ${info.beta ?? cell.betaDeg}°, ${info.gamma ?? cell.gammaDeg}°` },
       { label: "Space group", value: group.hm || group.hall || (group.number ? `No. ${group.number}` : "Unknown") },
+      { label: "R1 (gt / all)", value: pair(info.r1Gt ?? metadata.r1, info.r1All) },
+      { label: "wR2 (gt / all)", value: pair(info.wr2Gt, info.wr2All ?? metadata.wr2) },
+      { label: "Goodness of fit (S)", value: String(info.goodnessOfFit ?? metadata.goodnessOfFit ?? "—") },
+      { label: "Flack parameter", value: String(info.flack ?? metadata.flackParameter ?? "Not reported in CIF") },
     ];
     const optional = [
-      ["Formula", metadata.formula], ["Z", metadata.z], ["Temperature", metadata.temperatureK === undefined ? undefined : `${metadata.temperatureK} K`],
+      ["Crystal system", info.crystalSystem], [info.volume === undefined ? "Volume (calculated)" : "Volume", `${info.volume ?? cell.volume} Å³`],
+      ["Formula", metadata.formula], ["Moiety formula", info.moiety], ["Formula weight", info.formulaWeight], ["Z", metadata.z], ["Z′", metadata.zPrime],
+      ["Temperature", info.temperature ? `${info.temperature} K` : metadata.temperatureK === undefined ? undefined : `${metadata.temperatureK} K`],
+      ["Density (calculated)", info.density && `${info.density} g/cm³`], ["Absorption coefficient μ", info.absorption && `${info.absorption} mm⁻¹`],
+      ["F(000)", info.f000], ["Crystal size", info.sizeMax && `${info.sizeMax} × ${info.sizeMid ?? "—"} × ${info.sizeMin ?? "—"} mm`],
+      ["Radiation", info.radiation], ["Wavelength", info.wavelength && `${info.wavelength} Å`],
+      ["θ range", info.thetaMax && `${info.thetaMin ?? "—"}–${info.thetaMax}°`],
+      ["Reflections (measured / independent)", info.measured || info.independent ? pair(info.measured,info.independent) : undefined],
+      ["Observed reflections (gt)", info.observed], ["Observation threshold (gt)", info.threshold],
+      ["Rint / Rσ", info.rInt || info.rSigma ? pair(info.rInt,info.rSigma) : undefined],
+      ["Completeness at θmax", info.completeness],
+      ["Parameters / restraints", info.parameters || info.restraints ? pair(info.parameters,info.restraints) : undefined],
+      ["Maximum / mean shift / s.u.", info.shiftSuMax || info.shiftSuMean ? pair(info.shiftSuMax,info.shiftSuMean) : undefined],
+      ["Residual density (max / min)", info.residualMax || info.residualMin ? `${pair(info.residualMax,info.residualMin)} e/Å³` : undefined],
+      ["Residual density RMS", info.residualRms && `${info.residualRms} e/Å³`],
       ["CCDC", metadata.ccdcNumber], ["COD", metadata.databaseCod], ["ICSD", metadata.databaseIcsd], ["DOI", metadata.auditBlockDoi],
     ];
     optional.forEach(([label, value]) => { if (value !== undefined && value !== null && String(value)) rows.push({ label, value: String(value) }); });
@@ -8662,8 +8752,13 @@
     hideMolecule.disabled = options.canHideSelected !== true;
     display.append(unitCellLabel, hideMolecule, showAll);
 
+    const information = createElement(document, "details", { className: "crystal-information", open: "" });
+    information.append(createElement(document,"summary",{"data-viewer-text":"Crystal information"},"Crystal information"));
+    const uncertaintyNote = "Reported CIF values. Parentheses give standard uncertainties (s.u.); refinement statistics refer to the original CIF.";
+    information.append(createElement(document,"p",{className:"sidebar-help","data-viewer-text":uncertaintyNote},uncertaintyNote));
     const metadata = createElement(document, "dl", { className: "crystal-metadata" });
-    crystalMetadataRows(source).forEach((row) => metadata.append(createElement(document, "dt", {}, row.label), createElement(document, "dd", {}, row.value)));
+    crystalMetadataRows(source).forEach((row) => metadata.append(createElement(document, "dt", {}, row.label), createElement(document, "dd", row.value === "Not reported in CIF" ? {"data-viewer-text":row.value} : {}, row.value)));
+    information.append(metadata);
     const feedback = createElement(document, "div", { className: "crystal-feedback" });
     const exportSummary = createElement(document, "output", { className: "crystal-export-summary", "aria-live": "polite" });
     const warnings = createElement(document, "output", { className: "crystal-warnings", "aria-live": "polite" });
@@ -8671,7 +8766,7 @@
     const cancel = createElement(document, "button", { type: "button", className: "outlined-action crystal-cancel" }, "Cancel");
     cancel.hidden = true;
     feedback.append(warnings, progress, cancel);
-    panel.append(fields, supercell, replication, rangeSummary, ownership, display, metadata, exportSummary, feedback);
+    panel.append(fields, supercell, replication, rangeSummary, ownership, display, information, exportSummary, feedback);
     container.append(panel);
 
     function readState() {

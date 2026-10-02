@@ -152,10 +152,17 @@ restored as saved. Ranges, grid visibility and hidden periodic components are
 stored in new shares without changing source content or atom identity.
 
 Distance, angle and dihedral values appear at the lower left of the viewer.
-The Measurements tab retains selected-atom details. Double-click inside a
+Selected-atom details are in Info / XYZ; there is no Measurements tab. Double-click inside a
 viewer, including its canvas, to clear that viewer's selection.
 The 3D viewer retains selection/order labels and measurement helper lines;
 it does not generate numeric measurement labels, including for older shares.
+
+Crystal information includes reported cell standard uncertainties (parentheses),
+R1 and wR2 for observed/all reflections, goodness of fit, Flack, reflection counts,
+density and residual-density RMS/extrema. Missing Flack values are marked as not
+reported. Statistics refer to the original CIF, independent of display expansion.
+Allowlisted raw reporting tokens are display metadata, excluded from scientific
+contentIdentity, and retained in new v3 shares. Older shares remain readable.
 
 ## Build and acceptance
 

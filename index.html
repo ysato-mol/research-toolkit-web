@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <title>Research Toolkit Structure Viewer</title>
-    <link rel="stylesheet" href="app.css?v=20261002-measure-corner">
+    <link rel="stylesheet" href="app.css?v=20261002-crystal-info">
   </head>
   <body>
     <header class="app-header">
@@ -52,17 +52,13 @@
         <aside class="panel viewer-sidebar" aria-label="Display and measurements">
           <h2 data-viewer-text="Viewer settings">Viewer settings</h2>
           <div class="sidebar-tabs" role="tablist" aria-label="Viewer settings">
-            <button id="measureTab" role="tab" aria-controls="measurePage" data-sidebar-tab="measure" aria-selected="true" data-viewer-text="Measurements">Measurements</button>
             <button id="crystalTab" role="tab" aria-controls="crystalPage" data-sidebar-tab="crystal" aria-selected="false" data-viewer-text="Crystal" tabindex="-1" hidden>Crystal</button>
-            <button id="infoTab" role="tab" aria-controls="infoPage" data-sidebar-tab="info" aria-selected="false" data-viewer-text="Info / XYZ" tabindex="-1">Info / XYZ</button>
+            <button id="infoTab" role="tab" aria-controls="infoPage" data-sidebar-tab="info" aria-selected="true" data-viewer-text="Info / XYZ">Info / XYZ</button>
           </div>
-          <section id="measurePage" role="tabpanel" aria-labelledby="measureTab" data-sidebar-page="measure">
-            <h3 data-viewer-text="Selected atoms">Selected atoms</h3><output id="selectionSummary">—</output>
-            <p class="sidebar-help" data-viewer-text="Select 2 atoms for distance, 3 for angle, or 4 for dihedral.">Select 2 atoms for distance, 3 for angle, or 4 for dihedral.</p>
-          </section>
           <section id="crystalPage" role="tabpanel" aria-labelledby="crystalTab" data-sidebar-page="crystal" hidden><section id="crystalPanelHost" class="crystal-panel-host" aria-label="Crystal settings" hidden></section></section>
-          <section id="infoPage" role="tabpanel" aria-labelledby="infoTab" data-sidebar-page="info" hidden>
+          <section id="infoPage" role="tabpanel" aria-labelledby="infoTab" data-sidebar-page="info">
             <label class="model-control" hidden><span class="sr-only">Structure model</span><select id="modelSelect" aria-label="Structure model"></select></label>
+            <h3 data-viewer-text="Selected atoms">Selected atoms</h3><output id="selectionSummary">—</output>
             <output id="structureSummary" class="summary"></output>
             <div class="coordinate-actions"><button id="showXyzButton" type="button" class="outlined-action secondary" aria-expanded="false">Show XYZ</button><button id="exportXyzButton" type="button" class="outlined-action secondary">Export XYZ</button></div>
             <p id="lossyNotice" class="lossy-notice" hidden></p>
@@ -75,7 +71,7 @@
     <script src="vendor/3Dmol-2.5.3.min.js"></script>
     <script src="vendor/openchemlib-9.18.2.min.js"></script>
     <script src="vendor/molstar-cif-parser.js"></script>
-    <script src="dist/structure-viewer.bundle.js?v=20261002-measure-corner"></script>
-    <script src="app.js?v=20261002-measure-corner"></script>
+    <script src="dist/structure-viewer.bundle.js?v=20261002-crystal-info"></script>
+    <script src="app.js?v=20261002-crystal-info"></script>
   </body>
 </html>

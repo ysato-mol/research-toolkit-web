@@ -199,3 +199,7 @@ body[data-viewer-host="toolkit"] .sidebar-tabs button { background: transparent 
 body[data-viewer-host="toolkit"] .sidebar-tabs button[aria-selected="true"] { background: var(--color-surface) !important; color: var(--color-primary) !important; }
 @media (max-width: 980px) { .viewer-workspace { grid-template-columns: minmax(0, 1fr); } .viewer-sidebar { min-height: 0; } }
 @media (max-width: 700px) { .viewer-shell { width: calc(100% - 16px); padding: 8px 0 16px; } .tool-header { width: calc(100% - 16px); } .viewer-tool-strip button { width: auto; } .viewer-tool-strip { gap: 4px; } .panel { padding: 8px; } }
+
+.crystal-information { margin-top: 10px; }
+.crystal-information > summary { cursor: pointer; font-size: 14px; font-weight: 650; }
+.crystal-information .crystal-metadata { max-height: 330px; overflow-y: auto; }
